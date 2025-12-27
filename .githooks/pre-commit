@@ -1,0 +1,17 @@
+#!/bin/sh
+# Pre-commit hook that runs static analysis
+#
+# To enable this hook, run:
+#   git config core.hooksPath .githooks
+#
+# Or symlink it to .git/hooks/pre-commit:
+#   ln -sf ../../.githooks/pre-commit .git/hooks/pre-commit
+
+echo "🔍 Running pre-commit checks..."
+
+# Run the CI command
+lune run ci
+
+# Exit with the same code as the CI command
+exit $?
+

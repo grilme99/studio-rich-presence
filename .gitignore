@@ -1,0 +1,12 @@
+Packages/
+DevPackages/
+coverage/
+
+**/generated/*
+
+.DS_Store
+.env.luau
+sourcemap.json
+*.rbxl
+*.rbxl.lock
+globalTypes.d.luau

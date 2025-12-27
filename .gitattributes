@@ -1,0 +1,2 @@
+# Mark specific files as generated so they aren't shown in PR diffs by default.
+wally.lock linguist-generated=true

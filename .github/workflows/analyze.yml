@@ -1,0 +1,39 @@
+name: 🔍 Static Code Analysis
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+jobs:
+  analyze:
+    name: 🧪 Lint & Type Check
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: 📥 Checkout repository
+        uses: actions/checkout@v4
+
+      - name: 🔧 Install Rokit
+        uses: CompeyDev/setup-rokit@v0.1.2
+        with:
+          cache: true
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 📋 Verify tools
+        run: rokit list
+
+      - name: Run Lune setup
+        run: |
+          lune setup
+          rm .luaurc
+
+      - name: 📦 Setup project
+        run: lune run setup
+        env:
+          ROBLOX_API_KEY: ${{ secrets.ROBLOX_API_KEY }}
+
+      - name: 🔎 Run static analysis
+        run: lune run ci
