@@ -20,6 +20,7 @@ codegen.arguments = {}
 
 export type Options = {
 	quiet: boolean?,
+	generateSourcemap: boolean?,
 }
 
 --[[
@@ -32,17 +33,20 @@ function codegen.run(options_: Options?): boolean
 	local options: Options = options_ or {}
 	local quiet = if options.quiet ~= nil then options.quiet else false
 
-	-- Generate sourcemap
-	local sourcemapSuccess, sourcemapError = rojo.sourcemap({
-		projectFile = "plugin/default.project.jsonc",
-		output = "sourcemap.json",
-	})
-	if not sourcemapSuccess then
-		if not quiet then
-			print(color.bold(color.red("Failed to generate sourcemap")))
-			print(sourcemapError)
+	if options.generateSourcemap then
+		-- Generate sourcemap
+		local sourcemapSuccess, sourcemapError = rojo.sourcemap({
+			projectFile = "plugin/default.project.jsonc",
+			output = "sourcemap.json",
+			absolute = true,
+		})
+		if not sourcemapSuccess then
+			if not quiet then
+				print(color.bold(color.red("Failed to generate sourcemap")))
+				print(sourcemapError)
+			end
+			return false
 		end
-		return false
 	end
 
 	if not quiet then
