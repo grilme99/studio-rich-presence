@@ -8,15 +8,19 @@
     "start": "wrangler dev",
     "cf-typegen": "wrangler types",
     "db:migrate:local": "wrangler d1 migrations apply studio-rich-presence-db --local",
-    "db:migrate:prod": "wrangler d1 migrations apply studio-rich-presence-db --remote"
+    "db:migrate:prod": "wrangler d1 migrations apply studio-rich-presence-db --remote",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "hono": "^4.6.20",
     "zod": "^3.24.1"
   },
   "devDependencies": {
+    "@cloudflare/vitest-pool-workers": "^0.5.34",
     "@cloudflare/workers-types": "^4.20241230.0",
     "@types/node": "22.13.0",
+    "vitest": "^2.1.9",
     "wrangler": "^4.54.0"
   }
 }

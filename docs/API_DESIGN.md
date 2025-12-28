@@ -2917,14 +2917,14 @@ CREATE INDEX idx_auth_sessions_completion_code ON auth_sessions(completion_code)
 
 ### Backend (Priority Order)
 
-- [ ] Set up D1 database with schema
-- [ ] Create `Env` type with bindings
-- [ ] Implement crypto utilities:
-  - [ ] Token generation (auth tokens, client keys, completion codes)
-  - [ ] Token hashing (SHA-256 for auth tokens)
-  - [ ] Discord user ID hashing (SHA-256 with DISCORD_ID_SALT)
-  - [ ] HKDF key derivation (server + client key → encryption key)
-  - [ ] AES-GCM encryption/decryption for Discord tokens
+- [x] Set up D1 database with schema
+- [x] Create `Env` type with bindings
+- [x] Implement crypto utilities:
+  - [x] Token generation (auth tokens, client keys, completion codes)
+  - [x] Token hashing (SHA-256 for auth tokens)
+  - [x] Discord user ID hashing (SHA-256 with DISCORD_ID_SALT)
+  - [x] HKDF key derivation (server + client key → encryption key)
+  - [x] AES-GCM encryption/decryption for Discord tokens
 - [ ] Implement rate limiting middleware
 - [ ] `POST /api/auth/start` - Initiate auth flow
 - [ ] `GET /auth/link/:code` - Redirect to Discord + set state to "started"

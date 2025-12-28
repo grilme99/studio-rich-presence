@@ -3,7 +3,7 @@
 		/* Base Options: */
 		"esModuleInterop": true,
 		"skipLibCheck": true,
-		"target": "es2024",
+		"target": "esnext",
 		"verbatimModuleSyntax": false,
 		"allowJs": true,
 		"resolveJsonModule": true,
@@ -19,13 +19,12 @@
 		"module": "es2022",
 		"noEmit": true,
 		"lib": [
-			"es2024"
+			"esnext"
 		],
 		"types": [
 			"./worker-configuration.d.ts",
 			"@types/node",
 			"@cloudflare/workers-types",
-			"@types/service-worker-mock"
 		]
 	},
 	"exclude": [
