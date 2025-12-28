@@ -63,7 +63,7 @@ local function PluginApp(props: Props)
 		TelemetryOptOutDialog = React.createElement(TelemetryOptOutDialog),
 
 		Background = e(View, {
-			tag = "size-full bg-surface-0",
+			tag = "size-full bg-surface-100",
 		}, {}),
 	})
 end
