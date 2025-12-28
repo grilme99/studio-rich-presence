@@ -537,8 +537,8 @@ end
 │                           users                                  │
 ├─────────────────────────────────────────────────────────────────┤
 │ id                      │ TEXT PRIMARY KEY  │ UUID v4            │
-│ auth_token_hash         │ TEXT NOT NULL     │ SHA-256 of active  │
-│ pending_token_hash      │ TEXT              │ SHA-256 of pending │
+│ auth_token_hash         │ TEXT NOT NULL     │ HMAC-SHA256 (lookupable) │
+│ pending_token_hash      │ TEXT              │ HMAC-SHA256 (lookupable) │
 │ pending_token_expires   │ INTEGER           │ Unix timestamp     │
 │ created_at              │ INTEGER NOT NULL  │ Unix timestamp     │
 │ updated_at              │ INTEGER NOT NULL  │ Unix timestamp     │
@@ -572,20 +572,23 @@ Note: `discord_user_id_hash` is SHA-256(discord_user_id + server_salt). This ena
 ├─────────────────────────────────────────────────────────────────┤
 │ code              │ TEXT PRIMARY KEY  │ Random URL-safe string  │
 │ user_id           │ TEXT              │ FK → users.id (nullable)│
-│ state             │ TEXT NOT NULL     │ pending/completed/failed│
-│ code_verifier     │ TEXT NOT NULL     │ PKCE verifier           │
+│ state             │ TEXT NOT NULL     │ pending/started/completed/failed │
+│ pkce_code_verifier│ TEXT NOT NULL     │ PKCE verifier           │
+│ completion_code   │ TEXT              │ 5-digit manual entry code│
 │ result_token      │ TEXT              │ New auth token if created│
 │ result_client_key │ TEXT              │ New client key if created│
-│ completion_code   │ TEXT              │ 5-digit manual entry code│
 │ error_message     │ TEXT              │ Error details if failed │
 │ created_at        │ INTEGER NOT NULL  │ Unix timestamp          │
 │ expires_at        │ INTEGER NOT NULL  │ created_at + 5 minutes  │
 └─────────────────────────────────────────────────────────────────┘
+
+Note: `code` is the primary key—no separate `id` field needed since sessions are
+short-lived (5 min) and all operations are keyed by the URL-exposed code.
 ```
 
 ### Key Design Decisions
 
-1. **`auth_token_hash`**: Store hashed tokens, not plaintext. Compare using constant-time comparison.
+1. **`auth_token_hash`**: Store deterministic HMAC-SHA256 hashes for direct database lookup. Auth tokens are 256-bit random values, so per-token salts are unnecessary—the server pepper provides sufficient protection. This enables O(1) authentication via `WHERE auth_token_hash = ?`.
 2. **`pending_token_hash` / `pending_token_expires`**: Two-phase token rotation. Pending tokens must be acknowledged before becoming active. Expires after 5 minutes if not acknowledged, allowing the old token to continue working.
 3. **`access_token_enc`**: Encrypt Discord tokens using a key derived from BOTH server secret AND client-provided key (zero-knowledge storage).
 4. **`auth_sessions.user_id`**: Nullable because first-time users don't have an account yet.
@@ -2893,22 +2896,19 @@ CREATE INDEX idx_discord_accounts_hash ON discord_accounts(discord_user_id_hash)
 -- If user B links an account already linked to user A, the old link is deleted first
 
 CREATE TABLE auth_sessions (
-  code TEXT PRIMARY KEY,
+  code TEXT PRIMARY KEY,                  -- Random code (primary key, no separate id)
   user_id TEXT REFERENCES users(id) ON DELETE CASCADE,
-  state TEXT NOT NULL DEFAULT 'pending',
-  code_verifier TEXT NOT NULL,
-  completion_code TEXT NOT NULL,
-  completion_code_used INTEGER NOT NULL DEFAULT 0,
-  client_key_for_session TEXT,
-  result_token TEXT,
-  result_client_key TEXT,
-  error_message TEXT,
+  state TEXT NOT NULL DEFAULT 'pending',  -- pending/started/completed/failed
+  completion_code TEXT,                   -- 5-digit code for manual entry
+  pkce_code_verifier TEXT NOT NULL,       -- PKCE verifier for OAuth
+  result_token TEXT,                      -- Auth token to return (new users only)
+  result_client_key TEXT,                 -- Client key to return (new users only)
+  error_message TEXT,                     -- Error details if failed
   created_at INTEGER NOT NULL,
   expires_at INTEGER NOT NULL
 );
 
 CREATE INDEX idx_auth_sessions_expires_at ON auth_sessions(expires_at);
-CREATE INDEX idx_auth_sessions_completion_code ON auth_sessions(completion_code);
 ```
 
 ---
@@ -2921,12 +2921,13 @@ CREATE INDEX idx_auth_sessions_completion_code ON auth_sessions(completion_code)
 - [x] Create `Env` type with bindings
 - [x] Implement crypto utilities:
   - [x] Token generation (auth tokens, client keys, completion codes)
-  - [x] Token hashing (HMAC-SHA256 with per-hash salt)
+  - [x] Auth token hashing (deterministic HMAC-SHA256 for O(1) lookup)
+  - [x] Generic token hashing (HMAC-SHA256 with per-hash salt)
   - [x] Discord user ID hashing (HMAC-SHA256 with server salt)
   - [x] HKDF key derivation (server + client key → encryption key)
   - [x] AES-GCM encryption/decryption for Discord tokens
 - [x] Implement rate limiting middleware
-- [ ] `POST /api/auth/start` - Initiate auth flow
+- [x] `POST /api/auth/start` - Initiate auth flow
 - [ ] `GET /auth/link/:code` - Redirect to Discord + set state to "started"
 - [ ] `GET /auth/callback` - Handle OAuth callback + show completion code + cross-user unlinking
 - [ ] `GET /auth/sse/:code` - SSE endpoint via KV polling

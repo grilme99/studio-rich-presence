@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
+    hashAuthToken,
+    verifyAuthToken,
     hashToken,
     verifyToken,
     hashDiscordId,
@@ -14,7 +16,91 @@ const TEST_PEPPER = 'test-pepper-key-at-least-16-chars';
 const TEST_SALT = 'test-discord-id-salt-at-least-16-chars';
 
 describe('hashing', () => {
-    describe('hashToken', () => {
+    describe('hashAuthToken', () => {
+        it('should produce base64url-encoded hash', async () => {
+            const hash = await hashAuthToken('my-auth-token', TEST_PEPPER);
+            expect(hash).toMatch(/^[A-Za-z0-9_-]+$/);
+        });
+
+        it('should produce 32-byte MAC (HMAC-SHA256)', async () => {
+            const hash = await hashAuthToken('my-auth-token', TEST_PEPPER);
+            const decoded = base64urlDecode(hash);
+            expect(decoded.length).toBe(32);
+        });
+
+        it('should produce same hash for same token (deterministic)', async () => {
+            const hash1 = await hashAuthToken('same-token', TEST_PEPPER);
+            const hash2 = await hashAuthToken('same-token', TEST_PEPPER);
+            expect(hash1).toBe(hash2);
+        });
+
+        it('should produce different hashes for different tokens', async () => {
+            const hash1 = await hashAuthToken('token-one', TEST_PEPPER);
+            const hash2 = await hashAuthToken('token-two', TEST_PEPPER);
+            expect(hash1).not.toBe(hash2);
+        });
+
+        it('should produce different hashes for different peppers', async () => {
+            const hash1 = await hashAuthToken('same-token', TEST_PEPPER);
+            const hash2 = await hashAuthToken('same-token', 'different-pepper-key-16+');
+            expect(hash1).not.toBe(hash2);
+        });
+
+        it('should reject empty token', async () => {
+            await expect(hashAuthToken('', TEST_PEPPER)).rejects.toThrow(CryptoValidationError);
+        });
+
+        it('should reject empty pepper', async () => {
+            await expect(hashAuthToken('token', '')).rejects.toThrow(CryptoValidationError);
+        });
+
+        it('should reject short pepper', async () => {
+            await expect(hashAuthToken('token', 'short')).rejects.toThrow(CryptoValidationError);
+        });
+    });
+
+    describe('verifyAuthToken', () => {
+        it('should verify correct token', async () => {
+            const token = 'my-secret-auth-token';
+            const hash = await hashAuthToken(token, TEST_PEPPER);
+            const result = await verifyAuthToken(token, hash, TEST_PEPPER);
+            expect(result).toBe(true);
+        });
+
+        it('should reject incorrect token', async () => {
+            const hash = await hashAuthToken('correct-token', TEST_PEPPER);
+            const result = await verifyAuthToken('wrong-token', hash, TEST_PEPPER);
+            expect(result).toBe(false);
+        });
+
+        it('should reject token with wrong pepper', async () => {
+            const token = 'my-token';
+            const hash = await hashAuthToken(token, TEST_PEPPER);
+            const result = await verifyAuthToken(token, hash, 'wrong-pepper-key-16-chars');
+            expect(result).toBe(false);
+        });
+
+        it('should reject empty token', async () => {
+            const hash = await hashAuthToken('token', TEST_PEPPER);
+            await expect(verifyAuthToken('', hash, TEST_PEPPER)).rejects.toThrow(CryptoValidationError);
+        });
+
+        it('should work with tokens of various lengths', async () => {
+            const tokens = [
+                'short',
+                'medium-length-token-here',
+                'very-long-token-' + 'x'.repeat(100),
+            ];
+
+            for (const token of tokens) {
+                const hash = await hashAuthToken(token, TEST_PEPPER);
+                const result = await verifyAuthToken(token, hash, TEST_PEPPER);
+                expect(result).toBe(true);
+            }
+        });
+    });
+
+    describe('hashToken (salted)', () => {
         it('should produce base64url-encoded hash', async () => {
             const hash = await hashToken('my-secret-token', TEST_PEPPER);
             expect(hash).toMatch(/^[A-Za-z0-9_-]+$/);

@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { logger } from "hono/logger";
 import type { Env } from "./env";
+import { auth } from "./routes";
 
 // Create Hono app with typed environment
 const app = new Hono<{ Bindings: Env }>();
@@ -19,9 +20,8 @@ app.get("/", (c) => {
 	return c.json({ status: "ok", service: "studio-rich-presence" });
 });
 
-// TODO: Register API routes
-// app.route("/auth", authRoutes);
-// app.route("/api", apiRoutes);
+// Register routes
+app.route("/api/auth", auth);
 
 // Export for Cloudflare Workers
 export default {

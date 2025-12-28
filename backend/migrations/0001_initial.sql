@@ -41,8 +41,7 @@ CREATE INDEX idx_discord_accounts_user ON discord_accounts(user_id);
 
 -- Auth sessions table: Temporary state during OAuth flow
 CREATE TABLE auth_sessions (
-  id TEXT PRIMARY KEY,                    -- UUID v4
-  code TEXT NOT NULL UNIQUE,              -- Random code for the auth URL (used by plugin to poll/SSE)
+  code TEXT PRIMARY KEY,                  -- Random code for the auth URL (used by plugin/SSE)
   user_id TEXT,                           -- FK → users.id (NULL for new users)
   state TEXT NOT NULL,                    -- 'pending' | 'started' | 'completed' | 'failed'
   completion_code TEXT,                   -- 5-digit code shown to user for manual entry
@@ -58,7 +57,4 @@ CREATE TABLE auth_sessions (
 
 -- Index for cleanup job (find expired sessions)
 CREATE INDEX idx_auth_sessions_expires ON auth_sessions(expires_at);
-
--- Index for looking up by code (the primary lookup method)
-CREATE INDEX idx_auth_sessions_code ON auth_sessions(code);
 

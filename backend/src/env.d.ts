@@ -52,7 +52,6 @@ export interface DbDiscordAccount {
  * Auth session record from the database.
  */
 export interface DbAuthSession {
-    id: string;
     code: string;
     user_id: string | null;
     state: 'pending' | 'started' | 'completed' | 'failed';

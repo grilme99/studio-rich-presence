@@ -76,12 +76,44 @@ function combineWithLengthPrefix(...inputs: string[]): Uint8Array {
 }
 
 /**
- * Hash an auth token using HMAC-SHA256 with per-hash salt.
+ * Hash an auth token using HMAC-SHA256 (deterministic, lookupable).
+ *
+ * Auth tokens are 256-bit random values, so per-token salts are unnecessary.
+ * The server pepper provides sufficient protection against rainbow tables.
+ * This allows direct database lookups by hash.
+ *
+ * @param token The plaintext auth token to hash
+ * @param pepper The server's ENCRYPTION_KEY (used as HMAC key)
+ * @returns Base64url-encoded HMAC-SHA256
+ * @throws CryptoValidationError if inputs are invalid
+ */
+export async function hashAuthToken(token: string, pepper: string): Promise<string> {
+    validateToken(token, 'token');
+    validateSecret(pepper, 'pepper');
+
+    const encoder = new TextEncoder();
+
+    // Create HMAC key from pepper
+    const hmacKey = await importHmacKey(encoder.encode(pepper));
+
+    // HMAC with domain separator for auth tokens
+    const dataToHash = combineWithLengthPrefix(
+        'auth-token-v1', // Domain separator
+        token
+    );
+
+    const mac = await hmacSha256(hmacKey, dataToHash);
+    return base64urlEncode(mac);
+}
+
+/**
+ * Hash a token using HMAC-SHA256 with per-hash salt.
  *
  * Format: salt (16 bytes) || HMAC-SHA256(pepper, salt || token)
  *
- * The salt is randomly generated per token and stored with the hash.
- * The pepper is the server's ENCRYPTION_KEY (acts as HMAC key).
+ * Use this for tokens that may need additional protection or
+ * when lookupability is not required. For auth tokens that need
+ * direct database lookup, use hashAuthToken instead.
  *
  * @param token The plaintext token to hash
  * @param pepper The server's ENCRYPTION_KEY (used as HMAC key)
@@ -118,7 +150,38 @@ export async function hashToken(token: string, pepper: string): Promise<string> 
 }
 
 /**
- * Verify a token against its stored hash.
+ * Verify an auth token against its stored hash.
+ *
+ * Since auth tokens use deterministic hashing, we just recompute and compare.
+ * Uses constant-time comparison to prevent timing attacks.
+ *
+ * @param providedToken The token provided by the client
+ * @param storedHash The hash stored in the database
+ * @param pepper The server's ENCRYPTION_KEY (used as HMAC key)
+ * @returns true if the token matches the hash
+ * @throws CryptoValidationError if inputs are invalid
+ */
+export async function verifyAuthToken(
+    providedToken: string,
+    storedHash: string,
+    pepper: string
+): Promise<boolean> {
+    validateToken(providedToken, 'providedToken');
+    validateBase64url(storedHash, 'storedHash');
+    validateSecret(pepper, 'pepper');
+
+    // Compute the hash of the provided token
+    const computedHash = await hashAuthToken(providedToken, pepper);
+
+    // Constant-time comparison
+    const storedBytes = base64urlDecode(storedHash);
+    const computedBytes = base64urlDecode(computedHash);
+
+    return constantTimeEqualBytes(storedBytes, computedBytes);
+}
+
+/**
+ * Verify a token against its stored hash (salted version).
  *
  * Uses constant-time comparison to prevent timing attacks.
  *
