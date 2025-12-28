@@ -22,9 +22,9 @@
 			"esnext"
 		],
 		"types": [
-			"./worker-configuration.d.ts",
+			"@cloudflare/vitest-pool-workers",
 			"@types/node",
-			"@cloudflare/workers-types",
+			"./worker-configuration.d.ts",
 		]
 	},
 	"exclude": [
@@ -34,6 +34,6 @@
 	],
 	"include": [
 		"src",
-		"worker-configuration.d.ts"
+		"tests",
 	]
 }

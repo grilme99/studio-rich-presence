@@ -2921,11 +2921,11 @@ CREATE INDEX idx_auth_sessions_completion_code ON auth_sessions(completion_code)
 - [x] Create `Env` type with bindings
 - [x] Implement crypto utilities:
   - [x] Token generation (auth tokens, client keys, completion codes)
-  - [x] Token hashing (SHA-256 for auth tokens)
-  - [x] Discord user ID hashing (SHA-256 with DISCORD_ID_SALT)
+  - [x] Token hashing (HMAC-SHA256 with per-hash salt)
+  - [x] Discord user ID hashing (HMAC-SHA256 with server salt)
   - [x] HKDF key derivation (server + client key → encryption key)
   - [x] AES-GCM encryption/decryption for Discord tokens
-- [ ] Implement rate limiting middleware
+- [x] Implement rate limiting middleware
 - [ ] `POST /api/auth/start` - Initiate auth flow
 - [ ] `GET /auth/link/:code` - Redirect to Discord + set state to "started"
 - [ ] `GET /auth/callback` - Handle OAuth callback + show completion code + cross-user unlinking
