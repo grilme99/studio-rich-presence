@@ -1,26 +1,87 @@
-import { fromHono } from "chanfana";
 import { Hono } from "hono";
-import { TaskCreate } from "./endpoints/taskCreate";
-import { TaskDelete } from "./endpoints/taskDelete";
-import { TaskFetch } from "./endpoints/taskFetch";
-import { TaskList } from "./endpoints/taskList";
+import { cors } from "hono/cors";
+import { logger } from "hono/logger";
+import type { Env } from "./env";
 
-// Start a Hono app
+// Create Hono app with typed environment
 const app = new Hono<{ Bindings: Env }>();
 
-// Setup OpenAPI registry
-const openapi = fromHono(app, {
-	docs_url: "/docs",
+// Middleware
+app.use("*", logger());
+app.use("*", cors({
+	origin: "*", // Roblox Studio doesn't send Origin header
+	allowMethods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+	allowHeaders: ["Content-Type", "Authorization", "X-Ack-Token", "X-Client-Key"],
+}));
+
+// Health check
+app.get("/", (c) => {
+	return c.json({ status: "ok", service: "studio-rich-presence" });
 });
 
-// Register OpenAPI endpoints
-openapi.get("/api/tasks", TaskList);
-openapi.post("/api/tasks", TaskCreate);
-openapi.get("/api/tasks/:taskSlug", TaskFetch);
-openapi.delete("/api/tasks/:taskSlug", TaskDelete);
+// TODO: Register API routes
+// app.route("/auth", authRoutes);
+// app.route("/api", apiRoutes);
 
-// You may also register routes for non OpenAPI directly on Hono
-// app.get('/test', (c) => c.text('Hono!'))
+// Export for Cloudflare Workers
+export default {
+	fetch: app.fetch,
 
-// Export the Hono app
-export default app;
+	// Scheduled handler for cron triggers (cleanup jobs)
+	async scheduled(event: ScheduledEvent, env: Env, ctx: ExecutionContext): Promise<void> {
+		console.log(`Cron trigger fired at ${event.cron}`);
+
+		ctx.waitUntil(Promise.all([
+			cleanupInactiveAccounts(env),
+			cleanupExpiredSessions(env),
+			cleanupExpiredPendingTokens(env),
+		]));
+	},
+};
+
+// Cleanup functions (will be moved to separate file later)
+async function cleanupInactiveAccounts(env: Env): Promise<void> {
+	const INACTIVITY_THRESHOLD_DAYS = 90;
+	const thresholdTimestamp = Date.now() - (INACTIVITY_THRESHOLD_DAYS * 24 * 60 * 60 * 1000);
+
+	// Delete inactive users (CASCADE will delete their discord_accounts)
+	const result = await env.DB.prepare(`
+		DELETE FROM users 
+		WHERE last_activity_at < ?
+	`).bind(thresholdTimestamp).run();
+
+	console.log(JSON.stringify({
+		event: "cleanup_inactive_accounts",
+		deleted_count: result.meta.changes,
+		threshold_days: INACTIVITY_THRESHOLD_DAYS,
+	}));
+}
+
+async function cleanupExpiredSessions(env: Env): Promise<void> {
+	const now = Date.now();
+
+	const result = await env.DB.prepare(`
+		DELETE FROM auth_sessions 
+		WHERE expires_at < ?
+	`).bind(now).run();
+
+	console.log(JSON.stringify({
+		event: "cleanup_expired_sessions",
+		deleted_count: result.meta.changes,
+	}));
+}
+
+async function cleanupExpiredPendingTokens(env: Env): Promise<void> {
+	const now = Date.now();
+
+	const result = await env.DB.prepare(`
+		UPDATE users 
+		SET pending_token_hash = NULL, pending_token_expires = NULL
+		WHERE pending_token_expires IS NOT NULL AND pending_token_expires < ?
+	`).bind(now).run();
+
+	console.log(JSON.stringify({
+		event: "cleanup_expired_pending_tokens",
+		cleared_count: result.meta.changes,
+	}));
+}
