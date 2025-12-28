@@ -4,17 +4,15 @@
  */
 {
 	"$schema": "node_modules/wrangler/config-schema.json",
-	"name": "backend",
+	"name": "studio-rich-presence",
 	"main": "src/index.ts",
 	"compatibility_date": "2025-12-28",
 	"observability": {
 		"enabled": true
+	},
+	"placement": {
+		"mode": "smart"
 	}
-	/**
-	 * Smart Placement
-	 * https://developers.cloudflare.com/workers/configuration/smart-placement/#smart-placement
-	 */
-	// "placement": {  "mode": "smart" }
 	/**
 	 * Bindings
 	 * Bindings allow your Worker to interact with resources on the Cloudflare Developer Platform, including

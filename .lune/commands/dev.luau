@@ -5,6 +5,9 @@
 	starts Rojo serve, and optionally opens in Studio.
 ]]
 
+local process = require("@lune/process")
+local task = require("@lune/task")
+
 local codegen = require("./codegen")
 local color = require("../utils/color")
 local errors = require("../lib/cli/errors")
@@ -38,21 +41,41 @@ function dev.run(_options: Options)
 
 	print()
 
-	local buildResult = rojo.build({
-		projectFile = "plugin/default.project.jsonc",
-		plugin = "StudioRichPresence.rbxm",
-		watch = true,
-		stdio = "inherit",
-	})
+	-- Build plugin with Rojo
+	task.spawn(function()
+		local buildResult = rojo.build({
+			projectFile = "plugin/default.project.jsonc",
+			plugin = "StudioRichPresence.rbxm",
+			watch = true,
+			stdio = "inherit",
+		})
 
-	if not buildResult.ok then
-		errors.processError(
-			`Rojo exited with code {buildResult.code} while building`,
-			buildResult.code,
-			buildResult.stderr
-		)
-		return
-	end
+		if not buildResult.ok then
+			errors.processError(
+				`Rojo exited with code {buildResult.code} while building`,
+				buildResult.code,
+				buildResult.stderr
+			)
+			return
+		end
+	end)
+
+	-- Server backend
+	task.spawn(function()
+		local result = process.exec("npx", {
+			"wrangler",
+			"dev",
+			"--cwd",
+			"backend",
+		}, {
+			stdio = "inherit",
+		})
+
+		if not result.ok then
+			errors.processError(`Failed to start backend server`, result.code, result.stderr)
+			return
+		end
+	end)
 end
 
 return dev
