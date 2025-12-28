@@ -7,6 +7,7 @@ local ReactRoblox = require(Packages.ReactRoblox)
 local ContextProviders = require(Plugin.Source.Common.ContextProviders)
 local Logger = require(Plugin.Source.Logger)
 local PluginLoader = require(Plugin.Bin.PluginLoader)
+local fireEventAsync = require(Plugin.Source.Telemetry.fireEventAsync)
 
 local PluginApp = require(script.Parent.PluginApp)
 local PluginStore = require(script.Parent.PluginStore)
@@ -42,11 +43,11 @@ local function createPresencePlugin(plugin: Plugin, pluginLoaderContext: PluginL
 		end)
 		Logger:Info(`unmounted app in {elapsedMs}`)
 
-		-- task.spawn(function()
-		-- 	fireEventAsync({
-		-- 		eventName = "AppClosed",
-		-- 	})
-		-- end)
+		task.spawn(function()
+			fireEventAsync({
+				eventName = "AppClosed",
+			})
+		end)
 	end
 
 	local function mount()
@@ -56,11 +57,11 @@ local function createPresencePlugin(plugin: Plugin, pluginLoaderContext: PluginL
 		end)
 		Logger:Info(`mounted app in {elapsedMs}`)
 
-		-- task.spawn(function()
-		-- 	fireEventAsync({
-		-- 		eventName = "AppOpened",
-		-- 	})
-		-- end)
+		task.spawn(function()
+			fireEventAsync({
+				eventName = "AppOpened",
+			})
+		end)
 	end
 
 	local function destroy()

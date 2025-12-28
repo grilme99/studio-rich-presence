@@ -12,8 +12,11 @@ private = true
 React = "jsdotlua/react@17.2.1"
 ReactRoblox = "jsdotlua/react-roblox@17.2.1"
 Log = "realthx1/luaulog@0.3.0"
+Sift = "csqrl/sift@0.0.8"
+sha256 = "dekkonot/sha256@1.0.1"
+t = "osyrisrblx/t@3.0.0"
 
-# [dev-dependencies]
-# Jest = "jsdotlua/jest@3.10.0"
-# JestGlobals = "jsdotlua/jest-globals@3.10.0"
-# Chalk = "jsdotlua/chalk@0.2.1"
+# dev dependencies
+Jest = "jsdotlua/jest@3.10.0"
+JestGlobals = "jsdotlua/jest-globals@3.10.0"
+Chalk = "jsdotlua/chalk@0.2.1"

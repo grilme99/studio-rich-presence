@@ -5,7 +5,7 @@ local Foundation = require(Packages.Foundation)
 local React = require(Packages.React)
 local ReactUtils = require(Packages.ReactUtils)
 
-local useThemeName = require(Plugin.Source.Hooks.useThemeName)
+local useThemeName = require(script.Parent.useThemeName)
 
 local FoundationProvider = Foundation.FoundationProvider
 
