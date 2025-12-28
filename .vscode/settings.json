@@ -5,6 +5,6 @@
     "luau-lsp.completion.imports.separateGroupsWithLine": true,
     "luau-lsp.sourcemap.useVSCodeWatcher": true,
     "luau-lsp.sourcemap.rojoProjectFile": "plugin/default.project.jsonc",
-    "luau-lsp.sourcemap.generatorCommand": "rojo sourcemap plugin/default.project.jsonc --output sourcemap.json --absolute",
+    "luau-lsp.sourcemap.generatorCommand": "rojo sourcemap plugin/default.project.jsonc --output sourcemap.json --absolute --include-non-scripts",
     "editor.formatOnSave": true
 }

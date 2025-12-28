@@ -93,7 +93,7 @@ function install.run(options_: Options?): boolean
 	local sourcemapResult, sourcemapStdout = rojo.sourcemap({
 		projectFile = PROJECT_FILE,
 		output = SOURCEMAP_PATH,
-		includeNonScripts = false,
+		includeNonScripts = true,
 	})
 	if not sourcemapResult then
 		if not quiet then

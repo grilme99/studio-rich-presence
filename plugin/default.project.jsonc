@@ -9,6 +9,9 @@
     "Source": {
       "$path": "src/"
     },
+    "Resources": {
+      "$path": "resources/"
+    },
     "Packages": {
       "$path": "Packages/"
     }

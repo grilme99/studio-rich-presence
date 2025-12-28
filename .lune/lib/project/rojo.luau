@@ -103,7 +103,7 @@ function rojo.sourcemap(options_: SourcemapOptions?): (boolean, string)
 	local options: SourcemapOptions = options_ or {}
 	local projectFile = if options.projectFile ~= nil then options.projectFile else "default.project.jsonc"
 	local output = if options.output ~= nil then options.output else "sourcemap.json"
-	local includeNonScripts = if options.includeNonScripts ~= nil then options.includeNonScripts else false
+	local includeNonScripts = if options.includeNonScripts ~= nil then options.includeNonScripts else true
 	local absolute = if options.absolute ~= nil then options.absolute else true
 
 	local args = {

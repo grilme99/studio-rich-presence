@@ -5,7 +5,7 @@ registry = "test"
 [[package]]
 name = "brhodes/studio-rich-presence"
 version = "0.1.0"
-dependencies = [["React", "jsdotlua/react@17.2.1"], ["ReactRoblox", "jsdotlua/react-roblox@17.2.1"], ["Signal", "stravant/goodsignal@0.3.1"]]
+dependencies = [["Log", "realthx1/luaulog@0.3.0"], ["React", "jsdotlua/react@17.2.1"], ["ReactRoblox", "jsdotlua/react-roblox@17.2.1"]]
 
 [[package]]
 name = "jsdotlua/boolean"
@@ -93,6 +93,6 @@ version = "1.2.7"
 dependencies = [["collections", "jsdotlua/collections@1.2.7"]]
 
 [[package]]
-name = "stravant/goodsignal"
-version = "0.3.1"
+name = "realthx1/luaulog"
+version = "0.3.0"
 dependencies = []
