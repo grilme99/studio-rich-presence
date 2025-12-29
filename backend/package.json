@@ -6,6 +6,7 @@
     "deploy": "wrangler deploy",
     "dev": "wrangler dev",
     "start": "wrangler dev",
+    "build": "npm run proto:generate && npm run cf-typegen",
     "cf-typegen": "wrangler types",
     "db:migrate:local": "wrangler d1 migrations apply studio-rich-presence-db --local",
     "db:migrate:prod": "wrangler d1 migrations apply studio-rich-presence-db --remote",
