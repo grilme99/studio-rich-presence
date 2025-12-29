@@ -11,6 +11,7 @@ export default defineWorkersConfig({
                         ENCRYPTION_KEY: "test-encryption-key-must-be-32chars!",
                         DISCORD_CLIENT_ID: "test-discord-client-id",
                         DISCORD_CLIENT_SECRET: "test-discord-client-secret",
+                        DISCORD_REDIRECT_URI: "http://localhost/auth/callback",
                         DISCORD_ID_SALT: "test-discord-id-salt-for-testing",
                         POSTHOG_API_KEY: "test-posthog-api-key",
                     },

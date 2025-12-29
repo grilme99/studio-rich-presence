@@ -2,7 +2,7 @@
  * User service for authentication and user management.
  */
 
-import { hashAuthToken } from '../crypto';
+import { hashAuthToken, generateToken, generateUuid } from '../crypto';
 import type { DbUser } from '../env';
 
 /**
@@ -87,5 +87,62 @@ export async function getUserById(
     `).bind(userId).first<DbUser>();
 
     return result ?? null;
+}
+
+/**
+ * Result of creating a new user.
+ */
+export interface CreateUserResult {
+    user: DbUser;
+    authToken: string;  // Plaintext token (only returned once)
+}
+
+/**
+ * Create a new user.
+ *
+ * @param db D1Database binding
+ * @param pepper The ENCRYPTION_KEY secret for token hashing
+ * @returns New user and the plaintext auth token (only returned once)
+ */
+export async function createUser(
+    db: D1Database,
+    pepper: string
+): Promise<CreateUserResult> {
+    const userId = generateUuid();
+    const authToken = generateToken();
+    const tokenHash = await hashAuthToken(authToken, pepper);
+    const now = Date.now();
+
+    await db.prepare(`
+        INSERT INTO users (id, auth_token_hash, created_at, updated_at, last_activity_at)
+        VALUES (?, ?, ?, ?, ?)
+    `).bind(userId, tokenHash, now, now, now).run();
+
+    const user: DbUser = {
+        id: userId,
+        auth_token_hash: tokenHash,
+        pending_token_hash: null,
+        pending_token_expires: null,
+        created_at: now,
+        updated_at: now,
+        last_activity_at: now,
+    };
+
+    return { user, authToken };
+}
+
+/**
+ * Delete a user and all associated data.
+ * Due to CASCADE, this also deletes discord_accounts and auth_sessions.
+ */
+export async function deleteUser(
+    db: D1Database,
+    userId: string
+): Promise<boolean> {
+    const result = await db.prepare(`
+        DELETE FROM users WHERE id = ?
+    `).bind(userId).run();
+
+    return (result.meta.changes ?? 0) > 0;
 }
 

@@ -15,6 +15,8 @@ export type AuthSessionState = 'pending' | 'started' | 'completed' | 'failed';
 export interface CreateAuthSessionOptions {
     /** User ID if linking to existing user */
     userId?: string;
+    /** Client key for existing users (required if userId is provided) */
+    clientKey?: string;
     /** Session expiration in seconds (default 300 = 5 minutes) */
     expiresInSeconds?: number;
 }
@@ -61,7 +63,7 @@ export async function createAuthSession(
     db: D1Database,
     options: CreateAuthSessionOptions = {}
 ): Promise<CreateAuthSessionResult> {
-    const { userId, expiresInSeconds = SESSION_EXPIRATION_SECONDS } = options;
+    const { userId, clientKey: existingClientKey, expiresInSeconds = SESSION_EXPIRATION_SECONDS } = options;
 
     const code = generateSessionCode();
     const codeVerifier = generatePkceCodeVerifier();
@@ -69,8 +71,9 @@ export async function createAuthSession(
     const now = Date.now();
     const expiresAt = now + expiresInSeconds * 1000;
 
-    // Generate client key only for new users (no userId)
-    const clientKey = userId ? undefined : generateClientKey();
+    // For new users: generate a client key
+    // For existing users: use the provided client key (needed in callback for token encryption)
+    const clientKey = userId ? existingClientKey : generateClientKey();
 
     await db.prepare(`
         INSERT INTO auth_sessions (
@@ -84,7 +87,7 @@ export async function createAuthSession(
         'pending',
         completionCode,
         codeVerifier,
-        clientKey ?? null, // Store client key for new users
+        clientKey ?? null, // Store client key (generated for new, provided for existing)
         expiresAt,
         now
     ).run();

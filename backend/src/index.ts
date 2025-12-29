@@ -21,7 +21,7 @@ app.get("/", (c) => {
 });
 
 // Register routes
-app.route("/api/auth", auth);
+app.route("/auth", auth);
 
 // Export for Cloudflare Workers
 export default {

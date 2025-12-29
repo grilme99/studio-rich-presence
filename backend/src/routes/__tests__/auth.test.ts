@@ -322,7 +322,7 @@ describe('POST /api/auth/start', () => {
             expect(session!.user_id).toBe(userId);
         });
 
-        it('should NOT store client_key for existing users', async () => {
+        it('should store provided client_key for existing users (needed for callback)', async () => {
             const authToken = generateToken();
             const clientKey = generateToken();
             await createTestUser(authToken);
@@ -340,8 +340,8 @@ describe('POST /api/auth/start', () => {
                 SELECT result_client_key FROM auth_sessions WHERE code = ?
             `).bind(data.code).first();
 
-            // Existing users already have a client key, don't need a new one
-            expect(session!.result_client_key).toBeNull();
+            // Client key is stored so it can be used in the callback for encryption
+            expect(session!.result_client_key).toBe(clientKey);
         });
 
         it('should update last_activity_at on successful auth', async () => {

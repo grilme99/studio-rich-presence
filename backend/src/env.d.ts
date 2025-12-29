@@ -17,6 +17,7 @@ export interface Env {
     ENCRYPTION_KEY: string;        // Server-side key for Discord token encryption
     DISCORD_CLIENT_ID: string;     // Discord OAuth app client ID  
     DISCORD_CLIENT_SECRET: string; // Discord OAuth app client secret
+    DISCORD_REDIRECT_URI: string;  // Discord OAuth redirect URI
     DISCORD_ID_SALT: string;       // Salt for hashing Discord user IDs
     POSTHOG_API_KEY: string;       // Posthog project API key
 }
