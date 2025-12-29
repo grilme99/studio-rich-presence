@@ -17,14 +17,21 @@ import {
     setupDatabase,
 } from './testUtils';
 
-// Mock the Discord API calls
+// Track mock call count outside the mock factory
+let mockCallCount = 0;
+
+// Mock the Discord API calls - only mock the network call, not KV caching functions
 vi.mock('../../../services/presence', async (importOriginal) => {
     const original = await importOriginal<typeof import('../../../services/presence')>();
     return {
         ...original,
-        updateHeadlessSession: vi.fn().mockResolvedValue({
-            activities: [],
-            token: 'mock-session-token',
+        updateHeadlessSession: vi.fn((_accessToken: string, _activity: unknown, sessionToken?: string) => {
+            mockCallCount++;
+            return Promise.resolve({
+                activities: [],
+                // Return a new token if no session token was provided, otherwise return same token
+                token: sessionToken ?? `mock-session-token-${mockCallCount}`,
+            });
         }),
     };
 });
@@ -43,6 +50,9 @@ vi.mock('../../../services/discord', async (importOriginal) => {
     };
 });
 
+// Import after mock setup
+import { updateHeadlessSession } from '../../../services/presence';
+
 describe('POST /api/presence/update', () => {
     let app: Hono<{ Bindings: Env }>;
 
@@ -55,6 +65,7 @@ describe('POST /api/presence/update', () => {
         await cleanupDatabase(env.DB);
         await cleanupKV(env.KV);
         vi.clearAllMocks();
+        mockCallCount = 0;
     });
 
     afterEach(() => {
@@ -351,6 +362,119 @@ describe('POST /api/presence/update', () => {
 
             const data = await response2.json() as Record<string, unknown>;
             expect(data.code).toBe('RATE_LIMITED');
+        });
+    });
+
+    describe('session token caching', () => {
+        it('should cache session token in KV after successful update', async () => {
+            const authToken = generateToken();
+            const clientKey = generateToken();
+            const userId = await createTestUser(env.DB, authToken, env.ENCRYPTION_KEY);
+            const accountId = await createTestDiscordAccount(env.DB, userId, clientKey, env.ENCRYPTION_KEY);
+
+            // Make request
+            const response = await makeRequest(app, '/api/presence/update', env, {
+                method: 'POST',
+                body: { presence: { details: 'Test' } },
+                headers: {
+                    'Authorization': `Bearer ${authToken}`,
+                    'X-Client-Key': clientKey,
+                },
+            });
+
+            expect(response.status).toBe(200);
+
+            // Verify token is cached in KV
+            const cachedToken = await env.KV.get(`presence-session:${accountId}`);
+            expect(cachedToken).toBe('mock-session-token-1');
+        });
+
+        it('should reuse cached session token on subsequent requests', async () => {
+            const authToken = generateToken();
+            const clientKey = generateToken();
+            const userId = await createTestUser(env.DB, authToken, env.ENCRYPTION_KEY);
+            const accountId = await createTestDiscordAccount(env.DB, userId, clientKey, env.ENCRYPTION_KEY);
+
+            // Pre-populate KV with a cached token
+            await env.KV.put(`presence-session:${accountId}`, 'existing-cached-token', { expirationTtl: 1140 });
+
+            // Make request
+            const response = await makeRequest(app, '/api/presence/update', env, {
+                method: 'POST',
+                body: { presence: { details: 'Test' } },
+                headers: {
+                    'Authorization': `Bearer ${authToken}`,
+                    'X-Client-Key': clientKey,
+                },
+            });
+
+            expect(response.status).toBe(200);
+
+            // Verify updateHeadlessSession was called with the cached token
+            expect(updateHeadlessSession).toHaveBeenCalledWith(
+                expect.any(String), // access token
+                expect.any(Object), // activity
+                'existing-cached-token' // cached session token
+            );
+        });
+
+        it('should create new session when no cached token exists', async () => {
+            const authToken = generateToken();
+            const clientKey = generateToken();
+            const userId = await createTestUser(env.DB, authToken, env.ENCRYPTION_KEY);
+            await createTestDiscordAccount(env.DB, userId, clientKey, env.ENCRYPTION_KEY);
+
+            // Make request (no cached token)
+            const response = await makeRequest(app, '/api/presence/update', env, {
+                method: 'POST',
+                body: { presence: { details: 'Test' } },
+                headers: {
+                    'Authorization': `Bearer ${authToken}`,
+                    'X-Client-Key': clientKey,
+                },
+            });
+
+            expect(response.status).toBe(200);
+
+            // Verify updateHeadlessSession was called without a session token
+            expect(updateHeadlessSession).toHaveBeenCalledWith(
+                expect.any(String), // access token
+                expect.any(Object), // activity
+                undefined // no cached token
+            );
+        });
+
+        it('should keep cached token when reusing session', async () => {
+            const authToken = generateToken();
+            const clientKey = generateToken();
+            const userId = await createTestUser(env.DB, authToken, env.ENCRYPTION_KEY);
+            const accountId = await createTestDiscordAccount(env.DB, userId, clientKey, env.ENCRYPTION_KEY);
+
+            // Pre-populate with existing token (simulating a prior session)
+            await env.KV.put(`presence-session:${accountId}`, 'existing-session-token', { expirationTtl: 1140 });
+
+            // Make request
+            const response = await makeRequest(app, '/api/presence/update', env, {
+                method: 'POST',
+                body: { presence: { details: 'Test' } },
+                headers: {
+                    'Authorization': `Bearer ${authToken}`,
+                    'X-Client-Key': clientKey,
+                },
+            });
+
+            expect(response.status).toBe(200);
+
+            // Verify updateHeadlessSession was called with the cached token
+            expect(updateHeadlessSession).toHaveBeenCalledWith(
+                expect.any(String),
+                expect.any(Object),
+                'existing-session-token'
+            );
+
+            // The cached token should remain (mock returns same token when one is provided)
+            const cachedToken = await env.KV.get(`presence-session:${accountId}`);
+            expect(cachedToken).toBe('existing-session-token');
         });
     });
 });

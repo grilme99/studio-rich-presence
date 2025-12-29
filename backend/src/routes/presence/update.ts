@@ -11,6 +11,8 @@ import { refreshDiscordTokens } from '../../services/discord';
 import {
     presenceToActivity,
     updateHeadlessSession,
+    getCachedSessionToken,
+    cacheSessionToken,
     type PresenceUpdateResult,
 } from '../../services/presence';
 import {
@@ -117,12 +119,23 @@ updateRoute.post(
                         currentAccessToken = newTokens.access_token;
                     }
 
-                    // Update presence via headless session
-                    await updateHeadlessSession(currentAccessToken, activity);
+                    // Get cached session token if available
+                    const cachedToken = await getCachedSessionToken(c.env.KV, account.id);
+
+                    // Update presence via headless session (reusing existing session if cached)
+                    const sessionResponse = await updateHeadlessSession(
+                        currentAccessToken,
+                        activity,
+                        cachedToken ?? undefined
+                    );
+
+                    // Cache the session token for future updates (19min TTL)
+                    await cacheSessionToken(c.env.KV, account.id, sessionResponse.token);
 
                     return {
                         accountId: account.id,
                         success: true,
+                        sessionToken: sessionResponse.token,
                     };
                 } catch (error) {
                     console.error(`Failed to update presence for account ${account.id}:`, error);

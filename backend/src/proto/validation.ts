@@ -120,11 +120,13 @@ export function validateBody<T extends DescMessage>(
 
 /**
  * Get the validated body from context.
+ * Uses `any` for the context type to work with middleware-extended contexts.
  */
 export function getValidatedBody<T extends DescMessage>(
-    c: Context<{ Bindings: Env; Variables: { validatedBody: MessageShape<T> } }>
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    c: Context<any, any, any>
 ): MessageShape<T> {
-    return c.get('validatedBody');
+    return c.get('validatedBody') as MessageShape<T>;
 }
 
 /**

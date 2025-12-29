@@ -4,11 +4,20 @@
  * Discord's headless sessions API allows setting presence without a Gateway connection.
  * Sessions last 20 minutes and must be refreshed or recreated.
  *
+ * Session tokens are cached in KV with a 19-minute TTL (slightly less than Discord's
+ * 20-minute session lifetime) to enable transparent session reuse.
+ *
  * @see https://docs.discord.food/resources/presence#create-headless-session
  */
 
 import type { DiscordPresence } from '../generated/presence_pb';
 import { DiscordApiError } from './discord';
+
+/** Headless session TTL in seconds (19 minutes, slightly less than Discord's 20min) */
+const HEADLESS_SESSION_TTL_SECONDS = 19 * 60;
+
+/** KV key prefix for headless session tokens */
+const SESSION_TOKEN_KEY_PREFIX = 'presence-session:';
 
 /**
  * Discord activity type enum.
@@ -187,5 +196,58 @@ export interface PresenceUpdateResult {
     success: boolean;
     error?: string;
     sessionToken?: string;
+}
+
+/**
+ * Get KV key for a Discord account's headless session token.
+ */
+function getSessionTokenKey(discordAccountId: string): string {
+    return `${SESSION_TOKEN_KEY_PREFIX}${discordAccountId}`;
+}
+
+/**
+ * Get cached headless session token from KV.
+ *
+ * @param kv KV namespace
+ * @param discordAccountId The Discord account ID
+ * @returns The cached session token or null if not found/expired
+ */
+export async function getCachedSessionToken(
+    kv: KVNamespace,
+    discordAccountId: string
+): Promise<string | null> {
+    return kv.get(getSessionTokenKey(discordAccountId));
+}
+
+/**
+ * Cache a headless session token in KV.
+ *
+ * @param kv KV namespace
+ * @param discordAccountId The Discord account ID
+ * @param sessionToken The session token to cache
+ */
+export async function cacheSessionToken(
+    kv: KVNamespace,
+    discordAccountId: string,
+    sessionToken: string
+): Promise<void> {
+    await kv.put(
+        getSessionTokenKey(discordAccountId),
+        sessionToken,
+        { expirationTtl: HEADLESS_SESSION_TTL_SECONDS }
+    );
+}
+
+/**
+ * Delete a cached headless session token from KV.
+ *
+ * @param kv KV namespace
+ * @param discordAccountId The Discord account ID
+ */
+export async function deleteCachedSessionToken(
+    kv: KVNamespace,
+    discordAccountId: string
+): Promise<void> {
+    await kv.delete(getSessionTokenKey(discordAccountId));
 }
 
