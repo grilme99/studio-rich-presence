@@ -2,5 +2,5 @@
  * Routes exports for Studio Rich Presence backend.
  */
 
-export { auth } from './auth/index';
-export { presenceRouter as presence } from './presence/index';
+export { auth } from './auth';
+export { presenceRouter as presence } from './presence';

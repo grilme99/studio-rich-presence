@@ -291,6 +291,17 @@ export const rateLimiters = {
     }),
 
     /**
+     * Presence clear rate limit: 1 request per 15 seconds per user.
+     * Matches Discord's rate limit for presence clears.
+     */
+    presenceClear: createRateLimiter({
+        limit: 1,
+        windowSeconds: 15,
+        keyPrefix: "rl:presence-clear",
+        keyExtractor: extractAuthToken,
+    }),
+
+    /**
      * Account listing rate limit: 10 requests per minute per user.
      */
     accounts: createRateLimiter({

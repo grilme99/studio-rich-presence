@@ -1,55 +1,43 @@
 /**
- * POST /api/presence/update
+ * POST /api/presence/clear
  *
- * Updates Discord presence for all linked accounts.
+ * Clears Discord presence for all linked accounts by deleting headless sessions.
  */
 
 import { Hono } from 'hono';
 import type { Env } from '../../env';
 import { getDiscordAccountsForUser, getValidAccessToken } from '../../services/discordAccount';
 import {
-    presenceToActivity,
-    updateHeadlessSession,
+    deleteHeadlessSession,
     getCachedSessionToken,
-    cacheSessionToken,
-    type PresenceUpdateResult,
+    deleteCachedSessionToken,
 } from '../../services/presence';
 import { deriveEncryptionKey } from '../../crypto';
 import { requireAuth, trackActivity, rateLimiters } from '../../middleware';
 import type { AuthVariables } from '../../middleware/auth';
-import {
-    validateBody,
-    getValidatedBody,
-    createResponse,
-} from '../../proto/validation';
+import { createResponse } from '../../proto/validation';
 import { errors } from '../../proto/errors';
-import {
-    UpdatePresenceRequestSchema,
-    UpdatePresenceResponseSchema,
-} from '../../generated/presence_pb';
+import { ClearPresenceResponseSchema } from '../../generated/presence_pb';
 
-const updateRoute = new Hono<{ Bindings: Env; Variables: AuthVariables }>();
+const clearRoute = new Hono<{ Bindings: Env; Variables: AuthVariables }>();
 
 /**
- * POST /update
+ * POST /clear
  *
- * Updates Discord presence for all linked accounts.
+ * Clears Discord presence for all linked accounts.
  *
  * Headers:
  *   Authorization: Bearer <auth_token>
  *   X-Client-Key: <client_key>
  *
- * Request: UpdatePresenceRequest (presence.proto) - only presence field is used
- * Response: UpdatePresenceResponse (presence.proto)
+ * Response: ClearPresenceResponse (presence.proto)
  */
-updateRoute.post(
+clearRoute.post(
     '/',
-    rateLimiters.presence,
+    rateLimiters.presenceClear,
     requireAuth,
     trackActivity,
-    validateBody(UpdatePresenceRequestSchema),
     async (c) => {
-        const body = getValidatedBody<typeof UpdatePresenceRequestSchema>(c);
         const userId = c.get('userId');
 
         // Get client key from header
@@ -66,12 +54,18 @@ updateRoute.post(
         );
 
         const accounts = await getDiscordAccountsForUser(c.env.DB, userId);
-        const activity = presenceToActivity(body.presence, c.env.DISCORD_CLIENT_ID);
 
-        // Update presence for each account in parallel
+        // Clear presence for each account in parallel
         const results = await Promise.allSettled(
-            accounts.map(async (account): Promise<PresenceUpdateResult> => {
+            accounts.map(async (account) => {
                 try {
+                    // Get cached session token - if none exists, nothing to clear
+                    const sessionToken = await getCachedSessionToken(c.env.KV, account.id);
+                    if (!sessionToken) {
+                        // No active session, consider it successfully cleared
+                        return { accountId: account.id, success: true, hadSession: false };
+                    }
+
                     // Get valid access token (refreshes if needed)
                     const accessToken = await getValidAccessToken({
                         db: c.env.DB,
@@ -81,26 +75,19 @@ updateRoute.post(
                         discordClientSecret: c.env.DISCORD_CLIENT_SECRET,
                     });
 
-                    // Get cached session token if available
-                    const cachedToken = await getCachedSessionToken(c.env.KV, account.id);
+                    // Delete the headless session on Discord
+                    await deleteHeadlessSession(accessToken, sessionToken);
 
-                    // Update presence via headless session (reusing existing session if cached)
-                    const sessionResponse = await updateHeadlessSession(
-                        accessToken,
-                        activity,
-                        cachedToken ?? undefined
-                    );
+                    // Remove the cached session token
+                    await deleteCachedSessionToken(c.env.KV, account.id);
 
-                    // Cache the session token for future updates (19min TTL)
-                    await cacheSessionToken(c.env.KV, account.id, sessionResponse.token);
-
-                    return {
-                        accountId: account.id,
-                        success: true,
-                        sessionToken: sessionResponse.token,
-                    };
+                    return { accountId: account.id, success: true, hadSession: true };
                 } catch (error) {
-                    console.error(`Failed to update presence for account ${account.id}:`, error);
+                    console.error(`Failed to clear presence for account ${account.id}:`, error);
+
+                    // Still try to delete from cache even if Discord API failed
+                    await deleteCachedSessionToken(c.env.KV, account.id).catch(() => { });
+
                     return {
                         accountId: account.id,
                         success: false,
@@ -111,19 +98,19 @@ updateRoute.post(
         );
 
         // Count successes and failures
-        let updatedAccounts = 0;
+        let clearedAccounts = 0;
         let failedAccounts = 0;
 
         for (const result of results) {
             if (result.status === 'fulfilled' && result.value.success) {
-                updatedAccounts++;
+                clearedAccounts++;
             } else {
                 failedAccounts++;
             }
         }
 
-        const response = createResponse(UpdatePresenceResponseSchema, {
-            updatedAccounts,
+        const response = createResponse(ClearPresenceResponseSchema, {
+            clearedAccounts,
             failedAccounts,
         });
 
@@ -131,4 +118,4 @@ updateRoute.post(
     }
 );
 
-export { updateRoute };
+export { clearRoute };

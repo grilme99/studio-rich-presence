@@ -2,8 +2,12 @@
  * Discord account service for managing linked Discord accounts in the database.
  */
 
-import { generateUuid } from '../crypto';
+import { generateUuid, decryptDiscordTokens, encryptDiscordTokens } from '../crypto';
+import { refreshDiscordTokens } from './discord';
 import type { DbDiscordAccount } from '../env';
+
+/** Token expiry buffer: refresh if token expires within 5 minutes */
+const TOKEN_EXPIRY_BUFFER_MS = 5 * 60 * 1000;
 
 /**
  * Discord account as returned by queries.
@@ -118,6 +122,71 @@ export async function updateDiscordAccountTokens(
     `).bind(accessTokenEnc, refreshTokenEnc, tokenExpiresAt, now, id).run();
 
     return (result.meta.changes ?? 0) > 0;
+}
+
+/**
+ * Options for getting a valid access token.
+ */
+export interface GetAccessTokenOptions {
+    db: D1Database;
+    account: DiscordAccount;
+    encryptionKey: CryptoKey;
+    discordClientId: string;
+    discordClientSecret: string;
+}
+
+/**
+ * Get a valid Discord access token for an account, refreshing if needed.
+ *
+ * This handles:
+ * - Decrypting stored tokens
+ * - Checking if token is expired or about to expire
+ * - Refreshing the token with Discord
+ * - Re-encrypting and storing new tokens
+ *
+ * @returns The current valid access token
+ */
+export async function getValidAccessToken(options: GetAccessTokenOptions): Promise<string> {
+    const { db, account, encryptionKey, discordClientId, discordClientSecret } = options;
+    const now = Date.now();
+
+    // Decrypt tokens
+    const { accessToken, refreshToken } = await decryptDiscordTokens(
+        account.accessTokenEnc,
+        account.refreshTokenEnc,
+        encryptionKey
+    );
+
+    // Check if token is still valid (with buffer)
+    if (account.tokenExpiresAt >= now + TOKEN_EXPIRY_BUFFER_MS) {
+        return accessToken;
+    }
+
+    // Token is expired or about to expire - refresh it
+    const newTokens = await refreshDiscordTokens(
+        refreshToken,
+        discordClientId,
+        discordClientSecret
+    );
+
+    // Re-encrypt and store new tokens
+    const encrypted = await encryptDiscordTokens(
+        newTokens.access_token,
+        newTokens.refresh_token,
+        encryptionKey
+    );
+
+    const newExpiresAt = now + (newTokens.expires_in * 1000);
+
+    await updateDiscordAccountTokens(
+        db,
+        account.id,
+        encrypted.accessTokenEnc,
+        encrypted.refreshTokenEnc,
+        newExpiresAt
+    );
+
+    return newTokens.access_token;
 }
 
 /**
