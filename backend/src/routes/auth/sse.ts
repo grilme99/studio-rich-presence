@@ -30,6 +30,7 @@ sseRoute.get(
     '/:code',
     rateLimiters.sse,
     async (c) => {
+        let id = 0;
         return streamSSE(c, async (stream) => {
             const code = c.req.param('code');
 
@@ -39,6 +40,7 @@ sseRoute.get(
                 return await stream.writeSSE({
                     event: 'expired',
                     data: '',
+                    id: String(id++),
                 })
             }
 
@@ -47,6 +49,7 @@ sseRoute.get(
                 return await stream.writeSSE({
                     event: 'expired',
                     data: '',
+                    id: String(id++),
                 })
             }
 
@@ -55,6 +58,7 @@ sseRoute.get(
                 return await stream.writeSSE({
                     event: session.state,
                     data: JSON.stringify(formatSsePayload(session)),
+                    id: String(id++),
                 })
             }
 
@@ -62,6 +66,7 @@ sseRoute.get(
             await stream.writeSSE({
                 event: session.state,
                 data: JSON.stringify(formatSsePayload(session)),
+                id: String(id++),
             })
 
             // Start polling for updates
@@ -74,6 +79,7 @@ sseRoute.get(
                     await stream.writeSSE({
                         event: 'expired',
                         data: '',
+                        id: String(id++),
                     })
                     break;
                 }
@@ -84,6 +90,7 @@ sseRoute.get(
                     await stream.writeSSE({
                         event: currentSession.state,
                         data: JSON.stringify(formatSsePayload(currentSession)),
+                        id: String(id++),
                     })
                 }
 
@@ -92,6 +99,7 @@ sseRoute.get(
                     await stream.writeSSE({
                         event: 'heartbeat',
                         data: '',
+                        id: String(id++),
                     })
                     lastHeartbeat = Date.now();
                 }
@@ -101,6 +109,7 @@ sseRoute.get(
                     await stream.writeSSE({
                         event: 'expired',
                         data: '',
+                        id: String(id++),
                     })
                     break;
                 }
@@ -108,7 +117,11 @@ sseRoute.get(
                 await stream.sleep(SSE_POLL_INTERVAL_MS);
             }
         }, async (err, stream) => {
-            stream.writeln('An error occurred!')
+            stream.writeSSE({
+                event: 'error',
+                data: '',
+                id: String(id++),
+            })
             console.error(err)
         });
     });

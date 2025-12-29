@@ -236,15 +236,20 @@ describe('POST /api/auth/complete', () => {
             });
             expect(response1.status).toBe(200);
 
-            // Second completion (same request) should also succeed
+            const data1 = await response1.json() as Record<string, unknown>;
+            expect(data1.authToken).toBe(authToken);
+            expect(data1.clientKey).toBe(clientKey);
+
+            // Completing again should fail
             const response2 = await makeRequest(app, '/api/auth/complete', env, {
                 method: 'POST',
                 body: { code, completionCode: '12345' },
             });
-            expect(response2.status).toBe(200);
+            expect(response2.status).toBe(400);
 
             const data2 = await response2.json() as Record<string, unknown>;
-            expect(data2.authToken).toBe(authToken);
+            expect(data2.code).toBe('INVALID_REQUEST');
+            expect(data2.message).toContain('expired session');
         });
     });
 

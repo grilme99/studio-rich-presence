@@ -135,19 +135,6 @@ describe('GET /auth/link/:code', () => {
 
             expect(session!.state).toBe('started');
         });
-
-        it('should update KV state to started', async () => {
-            const code = 'valid-session-code';
-            await createTestSession(env.DB, { code });
-
-            await makeRequest(app, `/auth/link/${code}`, env);
-
-            const kvData = await env.KV.get(`sse:${code}`);
-            expect(kvData).toBeTruthy();
-
-            const state = JSON.parse(kvData!);
-            expect(state.state).toBe('started');
-        });
     });
 });
 

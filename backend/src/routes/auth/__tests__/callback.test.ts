@@ -438,44 +438,6 @@ describe('GET /auth/callback', () => {
             expect(text).toContain('Discord Connected');
             expect(text).toContain(completionCode);
         });
-
-        it('should update KV state to completed', async () => {
-            const code = 'new-user-session';
-            const clientKey = generateToken();
-            await createTestSession(env.DB, {
-                code,
-                state: 'started',
-                resultClientKey: clientKey,
-            });
-
-            mockDiscordFetch({
-                tokenResponse: {
-                    access_token: 'discord-access-token',
-                    refresh_token: 'discord-refresh-token',
-                    expires_in: 3600,
-                    token_type: 'Bearer',
-                    scope: 'identify activities.write',
-                },
-                userResponse: {
-                    id: '123456789012345678',
-                    username: 'testuser',
-                    discriminator: '0',
-                    avatar: null,
-                    global_name: null,
-                },
-            });
-
-            await makeRequest(
-                app,
-                `/auth/callback?code=discord-code&state=${code}`,
-                env
-            );
-
-            const kvData = await env.KV.get(`sse:${code}`);
-            expect(kvData).toBeTruthy();
-            const state = JSON.parse(kvData!);
-            expect(state.state).toBe('completed');
-        });
     });
 
     describe('existing user flow', () => {

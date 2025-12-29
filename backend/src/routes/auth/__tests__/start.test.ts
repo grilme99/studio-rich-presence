@@ -143,21 +143,6 @@ describe('POST /api/auth/start', () => {
             expect(session!.result_client_key).toMatch(/^[A-Za-z0-9_-]{43}$/);
         });
 
-        it('should initialize SSE state in KV', async () => {
-            const response = await makeRequest(app, '/api/auth/start', env, {
-                method: 'POST',
-                body: {},
-            });
-            const data = await response.json() as Record<string, unknown>;
-
-            const kvData = await env.KV.get(`sse:${data.code}`);
-            expect(kvData).toBeTruthy();
-
-            const state = JSON.parse(kvData!);
-            expect(state.state).toBe('pending');
-            expect(state.updatedAt).toBeGreaterThan(0);
-        });
-
         it('should handle empty request body', async () => {
             const request = new Request('http://localhost/api/auth/start', {
                 method: 'POST',

@@ -87,8 +87,8 @@ describe('GET /auth/sse/:code', () => {
             expect(events).toHaveLength(1);
             expect(events[0]!.event).toBe('completed');
             const data = events[0]!.data as Record<string, unknown>;
-            expect(data).toHaveProperty('auth_token', authToken);
-            expect(data).toHaveProperty('client_key', clientKey);
+            expect(data).toHaveProperty('authToken', authToken);
+            expect(data).toHaveProperty('clientKey', clientKey);
         });
 
         it('should return completed event without credentials for existing user', async () => {
@@ -153,6 +153,10 @@ describe('GET /auth/sse/:code', () => {
 
             expect(response.headers.get('Content-Type')).toBe('text/event-stream');
             expect(response.headers.get('Cache-Control')).toBe('no-cache');
+
+            // Must consume response body to properly close the stream and allow
+            // D1 storage cleanup in the vitest-pool-workers test runner
+            await response.text();
         });
     });
 });
