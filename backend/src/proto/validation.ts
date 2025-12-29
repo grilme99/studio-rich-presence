@@ -32,6 +32,19 @@ export {
     ErrorCode as ProtoErrorCode,
 } from '../generated/common_pb';
 
+export {
+    type UpdatePresenceRequest,
+    type UpdatePresenceResponse,
+    type DiscordPresence,
+    type PresenceTimestamps,
+    type PresenceAssets,
+    UpdatePresenceRequestSchema,
+    UpdatePresenceResponseSchema,
+    DiscordPresenceSchema,
+    PresenceTimestampsSchema,
+    PresenceAssetsSchema,
+} from '../generated/presence_pb';
+
 /**
  * Parse and validate JSON request body against a protobuf schema.
  *

@@ -3,3 +3,4 @@
  */
 
 export { auth } from './auth/index';
+export { presenceRouter as presence } from './presence/index';
