@@ -301,10 +301,10 @@ export const rateLimiters = {
     }),
 
     /**
-     * SSE connection rate limit: 1 connection per code.
+     * SSE connection rate limit: 5 connection per code.
      */
     sse: createRateLimiter({
-        limit: 1,
+        limit: 5,
         windowSeconds: 300, // 5 minutes (session duration)
         keyPrefix: "rl:sse",
         keyExtractor: (c) => c.req.param("code") ?? null,

@@ -1,129 +1,44 @@
+/**
+ * Tests for POST /api/auth/start endpoint.
+ */
+
 import { describe, it, expect, beforeEach, beforeAll } from 'vitest';
 import { env } from 'cloudflare:test';
-import { Hono } from 'hono';
-import { auth } from '../auth';
-import type { Env } from '../../env';
-import { hashAuthToken, generateToken } from '../../crypto';
-
-// Test app setup
-function createTestApp() {
-    const app = new Hono<{ Bindings: Env }>();
-    app.route('/api/auth', auth);
-    return app;
-}
-
-// Helper to make requests
-async function makeRequest(
-    app: Hono<{ Bindings: Env }>,
-    options: {
-        path?: string;
-        method?: string;
-        body?: object;
-        headers?: Record<string, string>;
-    } = {}
-) {
-    const { path = '/api/auth/start', method = 'POST', body, headers = {} } = options;
-
-    const request = new Request(`http://localhost${path}`, {
-        method,
-        headers: {
-            'Content-Type': 'application/json',
-            'cf-connecting-ip': '192.168.1.1',
-            ...headers,
-        },
-        body: body ? JSON.stringify(body) : undefined,
-    });
-
-    return app.fetch(request, env);
-}
-
-// Helper to create a test user
-async function createTestUser(authToken: string): Promise<string> {
-    const userId = crypto.randomUUID();
-    const tokenHash = await hashAuthToken(authToken, env.ENCRYPTION_KEY);
-    const now = Date.now();
-
-    await env.DB.prepare(`
-        INSERT INTO users (id, auth_token_hash, created_at, updated_at, last_activity_at)
-        VALUES (?, ?, ?, ?, ?)
-    `).bind(userId, tokenHash, now, now, now).run();
-
-    return userId;
-}
-
-// Helper to clean up database
-async function cleanupDatabase() {
-    await env.DB.prepare('DELETE FROM auth_sessions').run();
-    await env.DB.prepare('DELETE FROM discord_accounts').run();
-    await env.DB.prepare('DELETE FROM users').run();
-}
-
-// Helper to clean up KV
-async function cleanupKV() {
-    const keys = await env.KV.list();
-    for (const key of keys.keys) {
-        await env.KV.delete(key.name);
-    }
-}
+import type { Hono } from 'hono';
+import type { Env } from '../../../env';
+import { generateToken } from '../../../crypto';
+import {
+    createTestApp,
+    makeRequest,
+    createTestUser,
+    cleanupDatabase,
+    cleanupKV,
+    setupDatabase,
+} from './testUtils';
 
 describe('POST /api/auth/start', () => {
     let app: Hono<{ Bindings: Env }>;
 
     beforeAll(async () => {
-        // Run migrations to ensure schema exists
-        await env.DB.exec(
-            "CREATE TABLE IF NOT EXISTS users (" +
-            "id TEXT PRIMARY KEY, " +
-            "auth_token_hash TEXT NOT NULL UNIQUE, " +
-            "pending_token_hash TEXT, " +
-            "pending_token_expires INTEGER, " +
-            "created_at INTEGER NOT NULL, " +
-            "updated_at INTEGER NOT NULL, " +
-            "last_activity_at INTEGER NOT NULL)"
-        );
-
-        await env.DB.exec(
-            "CREATE TABLE IF NOT EXISTS discord_accounts (" +
-            "id TEXT PRIMARY KEY, " +
-            "user_id TEXT NOT NULL, " +
-            "discord_user_id_hash TEXT NOT NULL UNIQUE, " +
-            "access_token_enc TEXT NOT NULL, " +
-            "refresh_token_enc TEXT NOT NULL, " +
-            "token_expires_at INTEGER NOT NULL, " +
-            "created_at INTEGER NOT NULL, " +
-            "updated_at INTEGER NOT NULL, " +
-            "FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE)"
-        );
-
-        await env.DB.exec(
-            "CREATE TABLE IF NOT EXISTS auth_sessions (" +
-            "code TEXT PRIMARY KEY, " +
-            "user_id TEXT, " +
-            "state TEXT NOT NULL, " +
-            "completion_code TEXT, " +
-            "pkce_code_verifier TEXT NOT NULL, " +
-            "result_token TEXT, " +
-            "result_client_key TEXT, " +
-            "error_message TEXT, " +
-            "expires_at INTEGER NOT NULL, " +
-            "created_at INTEGER NOT NULL, " +
-            "FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE)"
-        );
+        await setupDatabase(env.DB);
     });
 
     beforeEach(async () => {
         app = createTestApp();
-        await cleanupDatabase();
-        await cleanupKV();
+        await cleanupDatabase(env.DB);
+        await cleanupKV(env.KV);
     });
 
     describe('new user flow (no auth_token)', () => {
         it('should create a new auth session', async () => {
-            const response = await makeRequest(app, { body: {} });
+            const response = await makeRequest(app, '/api/auth/start', env, {
+                method: 'POST',
+                body: {},
+            });
 
             expect(response.status).toBe(200);
 
-            const data: any = await response.json();
+            const data = await response.json() as Record<string, unknown>;
             expect(data).toHaveProperty('code');
             expect(data).toHaveProperty('url');
             expect(data).toHaveProperty('sseUrl');
@@ -131,34 +46,46 @@ describe('POST /api/auth/start', () => {
         });
 
         it('should return a valid session code', async () => {
-            const response = await makeRequest(app, { body: {} });
-            const data: any = await response.json();
+            const response = await makeRequest(app, '/api/auth/start', env, {
+                method: 'POST',
+                body: {},
+            });
+            const data = await response.json() as Record<string, unknown>;
 
             // Session code should be 32 bytes base64url encoded (43 chars)
             expect(data.code).toMatch(/^[A-Za-z0-9_-]{43}$/);
         });
 
         it('should return correct URLs', async () => {
-            const response = await makeRequest(app, { body: {} });
-            const data: any = await response.json();
+            const response = await makeRequest(app, '/api/auth/start', env, {
+                method: 'POST',
+                body: {},
+            });
+            const data = await response.json() as Record<string, unknown>;
 
             expect(data.url).toContain('/auth/link/');
-            expect(data.url).toContain(data.code);
+            expect(data.url).toContain(data.code as string);
 
             expect(data.sseUrl).toContain('/auth/sse/');
-            expect(data.sseUrl).toContain(data.code);
+            expect(data.sseUrl).toContain(data.code as string);
         });
 
         it('should return 5 minute expiration', async () => {
-            const response = await makeRequest(app, { body: {} });
-            const data: any = await response.json();
+            const response = await makeRequest(app, '/api/auth/start', env, {
+                method: 'POST',
+                body: {},
+            });
+            const data = await response.json() as Record<string, unknown>;
 
             expect(data.expiresInSeconds).toBe(300);
         });
 
         it('should create auth_session record in database', async () => {
-            const response = await makeRequest(app, { body: {} });
-            const data: any = await response.json();
+            const response = await makeRequest(app, '/api/auth/start', env, {
+                method: 'POST',
+                body: {},
+            });
+            const data = await response.json() as Record<string, unknown>;
 
             const session = await env.DB.prepare(`
                 SELECT * FROM auth_sessions WHERE code = ?
@@ -172,17 +99,19 @@ describe('POST /api/auth/start', () => {
         });
 
         it('should generate unique completion codes', async () => {
-            const response1 = await makeRequest(app, {
+            const response1 = await makeRequest(app, '/api/auth/start', env, {
+                method: 'POST',
                 body: {},
                 headers: { 'cf-connecting-ip': '1.1.1.1' },
             });
-            const response2 = await makeRequest(app, {
+            const response2 = await makeRequest(app, '/api/auth/start', env, {
+                method: 'POST',
                 body: {},
                 headers: { 'cf-connecting-ip': '2.2.2.2' },
             });
 
-            const data1: any = await response1.json();
-            const data2: any = await response2.json();
+            const data1 = await response1.json() as Record<string, unknown>;
+            const data2 = await response2.json() as Record<string, unknown>;
 
             const session1 = await env.DB.prepare(`
                 SELECT completion_code FROM auth_sessions WHERE code = ?
@@ -199,8 +128,11 @@ describe('POST /api/auth/start', () => {
         });
 
         it('should store client_key for new users', async () => {
-            const response = await makeRequest(app, { body: {} });
-            const data: any = await response.json();
+            const response = await makeRequest(app, '/api/auth/start', env, {
+                method: 'POST',
+                body: {},
+            });
+            const data = await response.json() as Record<string, unknown>;
 
             const session = await env.DB.prepare(`
                 SELECT result_client_key FROM auth_sessions WHERE code = ?
@@ -212,8 +144,11 @@ describe('POST /api/auth/start', () => {
         });
 
         it('should initialize SSE state in KV', async () => {
-            const response = await makeRequest(app, { body: {} });
-            const data: any = await response.json();
+            const response = await makeRequest(app, '/api/auth/start', env, {
+                method: 'POST',
+                body: {},
+            });
+            const data = await response.json() as Record<string, unknown>;
 
             const kvData = await env.KV.get(`sse:${data.code}`);
             expect(kvData).toBeTruthy();
@@ -253,21 +188,23 @@ describe('POST /api/auth/start', () => {
     describe('existing user flow (with auth_token)', () => {
         it('should require client_key when auth_token provided', async () => {
             const authToken = generateToken();
-            await createTestUser(authToken);
+            await createTestUser(env.DB, authToken, env.ENCRYPTION_KEY);
 
-            const response = await makeRequest(app, {
+            const response = await makeRequest(app, '/api/auth/start', env, {
+                method: 'POST',
                 body: { auth_token: authToken },
             });
 
             expect(response.status).toBe(400);
 
-            const data: any = await response.json();
+            const data = await response.json() as Record<string, unknown>;
             expect(data.code).toBe('INVALID_REQUEST');
             expect(data.message).toContain('client_key is required');
         });
 
         it('should reject invalid auth_token', async () => {
-            const response = await makeRequest(app, {
+            const response = await makeRequest(app, '/api/auth/start', env, {
+                method: 'POST',
                 body: {
                     auth_token: 'invalid-token',
                     client_key: 'some-client-key',
@@ -276,7 +213,7 @@ describe('POST /api/auth/start', () => {
 
             expect(response.status).toBe(401);
 
-            const data: any = await response.json();
+            const data = await response.json() as Record<string, unknown>;
             expect(data.code).toBe('UNAUTHORIZED');
             expect(data.message).toContain('Invalid auth token');
         });
@@ -284,9 +221,10 @@ describe('POST /api/auth/start', () => {
         it('should accept valid auth_token and client_key', async () => {
             const authToken = generateToken();
             const clientKey = generateToken();
-            const userId = await createTestUser(authToken);
+            await createTestUser(env.DB, authToken, env.ENCRYPTION_KEY);
 
-            const response = await makeRequest(app, {
+            const response = await makeRequest(app, '/api/auth/start', env, {
+                method: 'POST',
                 body: {
                     auth_token: authToken,
                     client_key: clientKey,
@@ -295,7 +233,7 @@ describe('POST /api/auth/start', () => {
 
             expect(response.status).toBe(200);
 
-            const data: any = await response.json();
+            const data = await response.json() as Record<string, unknown>;
             expect(data.code).toBeTruthy();
             expect(data.url).toBeTruthy();
             expect(data.sseUrl).toBeTruthy();
@@ -304,16 +242,17 @@ describe('POST /api/auth/start', () => {
         it('should link session to existing user', async () => {
             const authToken = generateToken();
             const clientKey = generateToken();
-            const userId = await createTestUser(authToken);
+            const userId = await createTestUser(env.DB, authToken, env.ENCRYPTION_KEY);
 
-            const response = await makeRequest(app, {
+            const response = await makeRequest(app, '/api/auth/start', env, {
+                method: 'POST',
                 body: {
                     auth_token: authToken,
                     client_key: clientKey,
                 },
             });
 
-            const data: any = await response.json();
+            const data = await response.json() as Record<string, unknown>;
 
             const session = await env.DB.prepare(`
                 SELECT user_id FROM auth_sessions WHERE code = ?
@@ -325,16 +264,17 @@ describe('POST /api/auth/start', () => {
         it('should store provided client_key for existing users (needed for callback)', async () => {
             const authToken = generateToken();
             const clientKey = generateToken();
-            await createTestUser(authToken);
+            await createTestUser(env.DB, authToken, env.ENCRYPTION_KEY);
 
-            const response = await makeRequest(app, {
+            const response = await makeRequest(app, '/api/auth/start', env, {
+                method: 'POST',
                 body: {
                     auth_token: authToken,
                     client_key: clientKey,
                 },
             });
 
-            const data: any = await response.json();
+            const data = await response.json() as Record<string, unknown>;
 
             const session = await env.DB.prepare(`
                 SELECT result_client_key FROM auth_sessions WHERE code = ?
@@ -347,7 +287,7 @@ describe('POST /api/auth/start', () => {
         it('should update last_activity_at on successful auth', async () => {
             const authToken = generateToken();
             const clientKey = generateToken();
-            const userId = await createTestUser(authToken);
+            const userId = await createTestUser(env.DB, authToken, env.ENCRYPTION_KEY);
 
             // Get original timestamp
             const beforeUser = await env.DB.prepare(`
@@ -357,7 +297,8 @@ describe('POST /api/auth/start', () => {
             // Small delay to ensure time difference
             await new Promise((resolve) => setTimeout(resolve, 10));
 
-            await makeRequest(app, {
+            await makeRequest(app, '/api/auth/start', env, {
+                method: 'POST',
                 body: {
                     auth_token: authToken,
                     client_key: clientKey,
@@ -376,8 +317,11 @@ describe('POST /api/auth/start', () => {
 
     describe('session properties', () => {
         it('should generate PKCE code verifier with correct length', async () => {
-            const response = await makeRequest(app, { body: {} });
-            const data: any = await response.json();
+            const response = await makeRequest(app, '/api/auth/start', env, {
+                method: 'POST',
+                body: {},
+            });
+            const data = await response.json() as Record<string, unknown>;
 
             const session = await env.DB.prepare(`
                 SELECT pkce_code_verifier FROM auth_sessions WHERE code = ?
@@ -391,8 +335,11 @@ describe('POST /api/auth/start', () => {
         it('should set correct expiration time', async () => {
             const beforeTime = Date.now();
 
-            const response = await makeRequest(app, { body: {} });
-            const data: any = await response.json();
+            const response = await makeRequest(app, '/api/auth/start', env, {
+                method: 'POST',
+                body: {},
+            });
+            const data = await response.json() as Record<string, unknown>;
 
             const afterTime = Date.now();
 
@@ -415,12 +362,13 @@ describe('POST /api/auth/start', () => {
 
             // Generate 10 sessions and verify all codes are unique
             for (let i = 0; i < 10; i++) {
-                const response = await makeRequest(app, {
+                const response = await makeRequest(app, '/api/auth/start', env, {
+                    method: 'POST',
                     body: {},
                     headers: { 'cf-connecting-ip': `10.0.0.${i}` },
                 });
-                const data: any = await response.json();
-                codes.add(data.code);
+                const data = await response.json() as Record<string, unknown>;
+                codes.add(data.code as string);
             }
 
             expect(codes.size).toBe(10);
@@ -444,7 +392,8 @@ describe('POST /api/auth/start', () => {
         });
 
         it('should ignore extra fields in request body', async () => {
-            const response = await makeRequest(app, {
+            const response = await makeRequest(app, '/api/auth/start', env, {
+                method: 'POST',
                 body: {
                     extra_field: 'should be ignored',
                     another_field: 12345,
@@ -457,7 +406,10 @@ describe('POST /api/auth/start', () => {
 
     describe('rate limiting', () => {
         it('should apply rate limit headers', async () => {
-            const response = await makeRequest(app, { body: {} });
+            const response = await makeRequest(app, '/api/auth/start', env, {
+                method: 'POST',
+                body: {},
+            });
 
             expect(response.headers.get('X-RateLimit-Limit')).toBeTruthy();
             expect(response.headers.get('X-RateLimit-Remaining')).toBeTruthy();
@@ -466,35 +418,44 @@ describe('POST /api/auth/start', () => {
         it('should rate limit after too many requests', async () => {
             // Make 10 requests (the limit for auth endpoints)
             for (let i = 0; i < 10; i++) {
-                await makeRequest(app, { body: {} });
+                await makeRequest(app, '/api/auth/start', env, {
+                    method: 'POST',
+                    body: {},
+                });
             }
 
             // 11th request should be rate limited
-            const response = await makeRequest(app, { body: {} });
+            const response = await makeRequest(app, '/api/auth/start', env, {
+                method: 'POST',
+                body: {},
+            });
             expect(response.status).toBe(429);
 
-            const data: any = await response.json();
+            const data = await response.json() as Record<string, unknown>;
             expect(data.code).toBe('RATE_LIMITED');
         });
 
         it('should track rate limits per IP', async () => {
             // Use up rate limit for IP 1
             for (let i = 0; i < 10; i++) {
-                await makeRequest(app, {
+                await makeRequest(app, '/api/auth/start', env, {
+                    method: 'POST',
                     body: {},
                     headers: { 'cf-connecting-ip': '1.1.1.1' },
                 });
             }
 
             // IP 1 should be rate limited
-            const response1 = await makeRequest(app, {
+            const response1 = await makeRequest(app, '/api/auth/start', env, {
+                method: 'POST',
                 body: {},
                 headers: { 'cf-connecting-ip': '1.1.1.1' },
             });
             expect(response1.status).toBe(429);
 
             // IP 2 should still work
-            const response2 = await makeRequest(app, {
+            const response2 = await makeRequest(app, '/api/auth/start', env, {
+                method: 'POST',
                 body: {},
                 headers: { 'cf-connecting-ip': '2.2.2.2' },
             });

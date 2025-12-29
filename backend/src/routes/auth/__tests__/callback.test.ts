@@ -1,104 +1,21 @@
+/**
+ * Tests for GET /auth/callback endpoint.
+ */
+
 import { describe, it, expect, beforeEach, beforeAll, vi, afterEach } from 'vitest';
 import { env } from 'cloudflare:test';
-import { Hono } from 'hono';
-import { auth } from '../auth';
-import type { Env } from '../../env';
-import { hashAuthToken, generateToken, hashDiscordId } from '../../crypto';
-
-// Test app setup
-function createTestApp() {
-    const app = new Hono<{ Bindings: Env }>();
-    app.route('/auth', auth);  // Mount without /api prefix for these routes
-    return app;
-}
-
-// Helper to make requests
-async function makeRequest(
-    app: Hono<{ Bindings: Env }>,
-    path: string,
-    options: {
-        method?: string;
-        headers?: Record<string, string>;
-    } = {}
-) {
-    const { method = 'GET', headers = {} } = options;
-
-    const request = new Request(`http://localhost${path}`, {
-        method,
-        headers,
-    });
-
-    return app.fetch(request, env);
-}
-
-// Helper to create a test user
-async function createTestUser(authToken: string): Promise<string> {
-    const userId = crypto.randomUUID();
-    const tokenHash = await hashAuthToken(authToken, env.ENCRYPTION_KEY);
-    const now = Date.now();
-
-    await env.DB.prepare(`
-        INSERT INTO users (id, auth_token_hash, created_at, updated_at, last_activity_at)
-        VALUES (?, ?, ?, ?, ?)
-    `).bind(userId, tokenHash, now, now, now).run();
-
-    return userId;
-}
-
-// Helper to create a test session directly in DB
-async function createTestSession(options: {
-    code: string;
-    userId?: string | null;
-    state?: string;
-    completionCode?: string;
-    codeVerifier?: string;
-    resultClientKey?: string | null;
-    expiresAt?: number;
-}) {
-    const now = Date.now();
-    const defaults = {
-        userId: null,
-        state: 'pending',
-        completionCode: '12345',
-        codeVerifier: generateToken(),  // 43 chars
-        resultClientKey: null,
-        expiresAt: now + 300000,  // 5 minutes from now
-    };
-
-    const opts = { ...defaults, ...options };
-
-    await env.DB.prepare(`
-        INSERT INTO auth_sessions (
-            code, user_id, state, completion_code,
-            pkce_code_verifier, result_client_key,
-            expires_at, created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `).bind(
-        opts.code,
-        opts.userId,
-        opts.state,
-        opts.completionCode,
-        opts.codeVerifier,
-        opts.resultClientKey,
-        opts.expiresAt,
-        now
-    ).run();
-}
-
-// Helper to clean up database
-async function cleanupDatabase() {
-    await env.DB.prepare('DELETE FROM auth_sessions').run();
-    await env.DB.prepare('DELETE FROM discord_accounts').run();
-    await env.DB.prepare('DELETE FROM users').run();
-}
-
-// Helper to clean up KV
-async function cleanupKV() {
-    const keys = await env.KV.list();
-    for (const key of keys.keys) {
-        await env.KV.delete(key.name);
-    }
-}
+import type { Hono } from 'hono';
+import type { Env } from '../../../env';
+import { generateToken, hashDiscordId } from '../../../crypto';
+import {
+    createTestApp,
+    makeRequest,
+    createTestUser,
+    createTestSession,
+    cleanupDatabase,
+    cleanupKV,
+    setupDatabase,
+} from './testUtils';
 
 // Mock Discord API responses using vi.stubGlobal
 function mockDiscordFetch(options: {
@@ -119,7 +36,7 @@ function mockDiscordFetch(options: {
     } | null;
     userError?: { status: number; body: unknown };
 }) {
-    const mockFetch = vi.fn(async (url: string | URL, init?: RequestInit) => {
+    const mockFetch = vi.fn(async (url: string | URL) => {
         const urlString = url.toString();
 
         if (urlString.includes('discord.com/api/oauth2/token')) {
@@ -160,229 +77,17 @@ function mockDiscordFetch(options: {
     return mockFetch;
 }
 
-describe('GET /auth/link/:code', () => {
-    let app: Hono<{ Bindings: Env }>;
-
-    beforeAll(async () => {
-        // Run migrations
-        await env.DB.exec(
-            "CREATE TABLE IF NOT EXISTS users (" +
-            "id TEXT PRIMARY KEY, " +
-            "auth_token_hash TEXT NOT NULL UNIQUE, " +
-            "pending_token_hash TEXT, " +
-            "pending_token_expires INTEGER, " +
-            "created_at INTEGER NOT NULL, " +
-            "updated_at INTEGER NOT NULL, " +
-            "last_activity_at INTEGER NOT NULL)"
-        );
-
-        await env.DB.exec(
-            "CREATE TABLE IF NOT EXISTS discord_accounts (" +
-            "id TEXT PRIMARY KEY, " +
-            "user_id TEXT NOT NULL, " +
-            "discord_user_id_hash TEXT NOT NULL UNIQUE, " +
-            "access_token_enc TEXT NOT NULL, " +
-            "refresh_token_enc TEXT NOT NULL, " +
-            "token_expires_at INTEGER NOT NULL, " +
-            "created_at INTEGER NOT NULL, " +
-            "updated_at INTEGER NOT NULL, " +
-            "FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE)"
-        );
-
-        await env.DB.exec(
-            "CREATE TABLE IF NOT EXISTS auth_sessions (" +
-            "code TEXT PRIMARY KEY, " +
-            "user_id TEXT, " +
-            "state TEXT NOT NULL, " +
-            "completion_code TEXT, " +
-            "pkce_code_verifier TEXT NOT NULL, " +
-            "result_token TEXT, " +
-            "result_client_key TEXT, " +
-            "error_message TEXT, " +
-            "expires_at INTEGER NOT NULL, " +
-            "created_at INTEGER NOT NULL, " +
-            "FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE)"
-        );
-    });
-
-    beforeEach(async () => {
-        app = createTestApp();
-        await cleanupDatabase();
-        await cleanupKV();
-    });
-
-    describe('validation', () => {
-        it('should return 404 for non-existent session', async () => {
-            const response = await makeRequest(app, '/auth/link/non-existent-code');
-
-            expect(response.status).toBe(404);
-            const text = await response.text();
-            expect(text).toContain('Link not found');
-        });
-
-        it('should return 410 for expired session', async () => {
-            const code = 'expired-session-code';
-            await createTestSession({
-                code,
-                expiresAt: Date.now() - 1000,  // Expired 1 second ago
-            });
-
-            const response = await makeRequest(app, `/auth/link/${code}`);
-
-            expect(response.status).toBe(410);
-            const text = await response.text();
-            expect(text).toContain('expired');
-        });
-
-        it('should return 400 for already-used session (started state)', async () => {
-            const code = 'started-session-code';
-            await createTestSession({
-                code,
-                state: 'started',
-            });
-
-            const response = await makeRequest(app, `/auth/link/${code}`);
-
-            expect(response.status).toBe(400);
-            const text = await response.text();
-            expect(text).toContain('already been used');
-        });
-
-        it('should return 400 for completed session', async () => {
-            const code = 'completed-session-code';
-            await createTestSession({
-                code,
-                state: 'completed',
-            });
-
-            const response = await makeRequest(app, `/auth/link/${code}`);
-
-            expect(response.status).toBe(400);
-            const text = await response.text();
-            expect(text).toContain('already been used');
-        });
-
-        it('should return 400 for failed session', async () => {
-            const code = 'failed-session-code';
-            await createTestSession({
-                code,
-                state: 'failed',
-            });
-
-            const response = await makeRequest(app, `/auth/link/${code}`);
-
-            expect(response.status).toBe(400);
-            const text = await response.text();
-            expect(text).toContain('already been used');
-        });
-    });
-
-    describe('successful redirect', () => {
-        it('should redirect to Discord OAuth', async () => {
-            const code = 'valid-session-code';
-            await createTestSession({ code });
-
-            const response = await makeRequest(app, `/auth/link/${code}`);
-
-            expect(response.status).toBe(302);
-            const location = response.headers.get('Location');
-            expect(location).toContain('discord.com/oauth2/authorize');
-        });
-
-        it('should include correct OAuth parameters', async () => {
-            const code = 'valid-session-code';
-            await createTestSession({ code });
-
-            const response = await makeRequest(app, `/auth/link/${code}`);
-            const location = response.headers.get('Location')!;
-            const url = new URL(location);
-
-            expect(url.searchParams.get('client_id')).toBe(env.DISCORD_CLIENT_ID);
-            expect(url.searchParams.get('redirect_uri')).toBe(env.DISCORD_REDIRECT_URI);
-            expect(url.searchParams.get('response_type')).toBe('code');
-            expect(url.searchParams.get('scope')).toBe('identify sdk.social_layer_presence');
-            expect(url.searchParams.get('state')).toBe(code);
-            expect(url.searchParams.get('code_challenge_method')).toBe('S256');
-            expect(url.searchParams.get('code_challenge')).toBeTruthy();
-        });
-
-        it('should update session state to started', async () => {
-            const code = 'valid-session-code';
-            await createTestSession({ code });
-
-            await makeRequest(app, `/auth/link/${code}`);
-
-            const session = await env.DB.prepare(`
-                SELECT state FROM auth_sessions WHERE code = ?
-            `).bind(code).first();
-
-            expect(session!.state).toBe('started');
-        });
-
-        it('should update KV state to started', async () => {
-            const code = 'valid-session-code';
-            await createTestSession({ code });
-
-            await makeRequest(app, `/auth/link/${code}`);
-
-            const kvData = await env.KV.get(`sse:${code}`);
-            expect(kvData).toBeTruthy();
-
-            const state = JSON.parse(kvData!);
-            expect(state.state).toBe('started');
-        });
-    });
-});
-
 describe('GET /auth/callback', () => {
     let app: Hono<{ Bindings: Env }>;
 
     beforeAll(async () => {
-        // Run migrations (same as above)
-        await env.DB.exec(
-            "CREATE TABLE IF NOT EXISTS users (" +
-            "id TEXT PRIMARY KEY, " +
-            "auth_token_hash TEXT NOT NULL UNIQUE, " +
-            "pending_token_hash TEXT, " +
-            "pending_token_expires INTEGER, " +
-            "created_at INTEGER NOT NULL, " +
-            "updated_at INTEGER NOT NULL, " +
-            "last_activity_at INTEGER NOT NULL)"
-        );
-
-        await env.DB.exec(
-            "CREATE TABLE IF NOT EXISTS discord_accounts (" +
-            "id TEXT PRIMARY KEY, " +
-            "user_id TEXT NOT NULL, " +
-            "discord_user_id_hash TEXT NOT NULL UNIQUE, " +
-            "access_token_enc TEXT NOT NULL, " +
-            "refresh_token_enc TEXT NOT NULL, " +
-            "token_expires_at INTEGER NOT NULL, " +
-            "created_at INTEGER NOT NULL, " +
-            "updated_at INTEGER NOT NULL, " +
-            "FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE)"
-        );
-
-        await env.DB.exec(
-            "CREATE TABLE IF NOT EXISTS auth_sessions (" +
-            "code TEXT PRIMARY KEY, " +
-            "user_id TEXT, " +
-            "state TEXT NOT NULL, " +
-            "completion_code TEXT, " +
-            "pkce_code_verifier TEXT NOT NULL, " +
-            "result_token TEXT, " +
-            "result_client_key TEXT, " +
-            "error_message TEXT, " +
-            "expires_at INTEGER NOT NULL, " +
-            "created_at INTEGER NOT NULL, " +
-            "FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE)"
-        );
+        await setupDatabase(env.DB);
     });
 
     beforeEach(async () => {
         app = createTestApp();
-        await cleanupDatabase();
-        await cleanupKV();
+        await cleanupDatabase(env.DB);
+        await cleanupKV(env.KV);
     });
 
     afterEach(() => {
@@ -393,7 +98,8 @@ describe('GET /auth/callback', () => {
         it('should handle Discord OAuth error', async () => {
             const response = await makeRequest(
                 app,
-                '/auth/callback?error=access_denied&error_description=User%20denied%20access'
+                '/auth/callback?error=access_denied&error_description=User%20denied%20access',
+                env
             );
 
             expect(response.status).toBe(400);
@@ -404,7 +110,8 @@ describe('GET /auth/callback', () => {
         it('should return 400 for missing code parameter', async () => {
             const response = await makeRequest(
                 app,
-                '/auth/callback?state=some-state'
+                '/auth/callback?state=some-state',
+                env
             );
 
             expect(response.status).toBe(400);
@@ -415,7 +122,8 @@ describe('GET /auth/callback', () => {
         it('should return 400 for missing state parameter', async () => {
             const response = await makeRequest(
                 app,
-                '/auth/callback?code=some-code'
+                '/auth/callback?code=some-code',
+                env
             );
 
             expect(response.status).toBe(400);
@@ -426,7 +134,8 @@ describe('GET /auth/callback', () => {
         it('should return 400 for invalid session (not found)', async () => {
             const response = await makeRequest(
                 app,
-                '/auth/callback?code=discord-code&state=invalid-session'
+                '/auth/callback?code=discord-code&state=invalid-session',
+                env
             );
 
             expect(response.status).toBe(400);
@@ -436,7 +145,7 @@ describe('GET /auth/callback', () => {
 
         it('should return 410 for expired session', async () => {
             const code = 'expired-session';
-            await createTestSession({
+            await createTestSession(env.DB, {
                 code,
                 state: 'started',
                 expiresAt: Date.now() - 1000,
@@ -444,7 +153,8 @@ describe('GET /auth/callback', () => {
 
             const response = await makeRequest(
                 app,
-                `/auth/callback?code=discord-code&state=${code}`
+                `/auth/callback?code=discord-code&state=${code}`,
+                env
             );
 
             expect(response.status).toBe(410);
@@ -454,14 +164,15 @@ describe('GET /auth/callback', () => {
 
         it('should return 400 for session in wrong state (pending)', async () => {
             const code = 'pending-session';
-            await createTestSession({
+            await createTestSession(env.DB, {
                 code,
                 state: 'pending',
             });
 
             const response = await makeRequest(
                 app,
-                `/auth/callback?code=discord-code&state=${code}`
+                `/auth/callback?code=discord-code&state=${code}`,
+                env
             );
 
             expect(response.status).toBe(400);
@@ -471,14 +182,15 @@ describe('GET /auth/callback', () => {
 
         it('should return 400 for session in wrong state (completed)', async () => {
             const code = 'completed-session';
-            await createTestSession({
+            await createTestSession(env.DB, {
                 code,
                 state: 'completed',
             });
 
             const response = await makeRequest(
                 app,
-                `/auth/callback?code=discord-code&state=${code}`
+                `/auth/callback?code=discord-code&state=${code}`,
+                env
             );
 
             expect(response.status).toBe(400);
@@ -489,7 +201,7 @@ describe('GET /auth/callback', () => {
         it('should return 502 for Discord token exchange failure', async () => {
             const code = 'valid-session';
             const clientKey = generateToken();
-            await createTestSession({
+            await createTestSession(env.DB, {
                 code,
                 state: 'started',
                 resultClientKey: clientKey,
@@ -501,7 +213,8 @@ describe('GET /auth/callback', () => {
 
             const response = await makeRequest(
                 app,
-                `/auth/callback?code=discord-code&state=${code}`
+                `/auth/callback?code=discord-code&state=${code}`,
+                env
             );
 
             expect(response.status).toBe(502);
@@ -512,7 +225,7 @@ describe('GET /auth/callback', () => {
         it('should return 502 for Discord user fetch failure', async () => {
             const code = 'valid-session';
             const clientKey = generateToken();
-            await createTestSession({
+            await createTestSession(env.DB, {
                 code,
                 state: 'started',
                 resultClientKey: clientKey,
@@ -531,7 +244,8 @@ describe('GET /auth/callback', () => {
 
             const response = await makeRequest(
                 app,
-                `/auth/callback?code=discord-code&state=${code}`
+                `/auth/callback?code=discord-code&state=${code}`,
+                env
             );
 
             expect(response.status).toBe(502);
@@ -540,7 +254,7 @@ describe('GET /auth/callback', () => {
         it('should update session state to failed on error', async () => {
             const code = 'valid-session';
             const clientKey = generateToken();
-            await createTestSession({
+            await createTestSession(env.DB, {
                 code,
                 state: 'started',
                 resultClientKey: clientKey,
@@ -552,7 +266,8 @@ describe('GET /auth/callback', () => {
 
             await makeRequest(
                 app,
-                `/auth/callback?code=discord-code&state=${code}`
+                `/auth/callback?code=discord-code&state=${code}`,
+                env
             );
 
             const session = await env.DB.prepare(`
@@ -568,7 +283,7 @@ describe('GET /auth/callback', () => {
         it('should create a new user on successful callback', async () => {
             const code = 'new-user-session';
             const clientKey = generateToken();
-            await createTestSession({
+            await createTestSession(env.DB, {
                 code,
                 state: 'started',
                 resultClientKey: clientKey,
@@ -593,7 +308,8 @@ describe('GET /auth/callback', () => {
 
             const response = await makeRequest(
                 app,
-                `/auth/callback?code=discord-code&state=${code}`
+                `/auth/callback?code=discord-code&state=${code}`,
+                env
             );
 
             expect(response.status).toBe(200);
@@ -606,7 +322,7 @@ describe('GET /auth/callback', () => {
         it('should create a Discord account link', async () => {
             const code = 'new-user-session';
             const clientKey = generateToken();
-            await createTestSession({
+            await createTestSession(env.DB, {
                 code,
                 state: 'started',
                 resultClientKey: clientKey,
@@ -631,7 +347,8 @@ describe('GET /auth/callback', () => {
 
             await makeRequest(
                 app,
-                `/auth/callback?code=discord-code&state=${code}`
+                `/auth/callback?code=discord-code&state=${code}`,
+                env
             );
 
             const accounts = await env.DB.prepare('SELECT * FROM discord_accounts').all();
@@ -644,7 +361,7 @@ describe('GET /auth/callback', () => {
         it('should update session with result token for new users', async () => {
             const code = 'new-user-session';
             const clientKey = generateToken();
-            await createTestSession({
+            await createTestSession(env.DB, {
                 code,
                 state: 'started',
                 resultClientKey: clientKey,
@@ -669,7 +386,8 @@ describe('GET /auth/callback', () => {
 
             await makeRequest(
                 app,
-                `/auth/callback?code=discord-code&state=${code}`
+                `/auth/callback?code=discord-code&state=${code}`,
+                env
             );
 
             const session = await env.DB.prepare(`
@@ -685,7 +403,7 @@ describe('GET /auth/callback', () => {
             const code = 'new-user-session';
             const clientKey = generateToken();
             const completionCode = '54321';
-            await createTestSession({
+            await createTestSession(env.DB, {
                 code,
                 state: 'started',
                 resultClientKey: clientKey,
@@ -711,7 +429,8 @@ describe('GET /auth/callback', () => {
 
             const response = await makeRequest(
                 app,
-                `/auth/callback?code=discord-code&state=${code}`
+                `/auth/callback?code=discord-code&state=${code}`,
+                env
             );
 
             expect(response.status).toBe(200);
@@ -723,7 +442,7 @@ describe('GET /auth/callback', () => {
         it('should update KV state to completed', async () => {
             const code = 'new-user-session';
             const clientKey = generateToken();
-            await createTestSession({
+            await createTestSession(env.DB, {
                 code,
                 state: 'started',
                 resultClientKey: clientKey,
@@ -748,7 +467,8 @@ describe('GET /auth/callback', () => {
 
             await makeRequest(
                 app,
-                `/auth/callback?code=discord-code&state=${code}`
+                `/auth/callback?code=discord-code&state=${code}`,
+                env
             );
 
             const kvData = await env.KV.get(`sse:${code}`);
@@ -762,10 +482,10 @@ describe('GET /auth/callback', () => {
         it('should link Discord to existing user', async () => {
             const authToken = generateToken();
             const clientKey = generateToken();
-            const userId = await createTestUser(authToken);
+            const userId = await createTestUser(env.DB, authToken, env.ENCRYPTION_KEY);
 
             const code = 'existing-user-session';
-            await createTestSession({
+            await createTestSession(env.DB, {
                 code,
                 state: 'started',
                 userId,
@@ -791,7 +511,8 @@ describe('GET /auth/callback', () => {
 
             const response = await makeRequest(
                 app,
-                `/auth/callback?code=discord-code&state=${code}`
+                `/auth/callback?code=discord-code&state=${code}`,
+                env
             );
 
             expect(response.status).toBe(200);
@@ -807,10 +528,10 @@ describe('GET /auth/callback', () => {
         it('should NOT create a new user for existing user flow', async () => {
             const authToken = generateToken();
             const clientKey = generateToken();
-            const userId = await createTestUser(authToken);
+            const userId = await createTestUser(env.DB, authToken, env.ENCRYPTION_KEY);
 
             const code = 'existing-user-session';
-            await createTestSession({
+            await createTestSession(env.DB, {
                 code,
                 state: 'started',
                 userId,
@@ -836,7 +557,8 @@ describe('GET /auth/callback', () => {
 
             await makeRequest(
                 app,
-                `/auth/callback?code=discord-code&state=${code}`
+                `/auth/callback?code=discord-code&state=${code}`,
+                env
             );
 
             const users = await env.DB.prepare('SELECT * FROM users').all();
@@ -846,10 +568,10 @@ describe('GET /auth/callback', () => {
         it('should NOT set result_token for existing users', async () => {
             const authToken = generateToken();
             const clientKey = generateToken();
-            const userId = await createTestUser(authToken);
+            const userId = await createTestUser(env.DB, authToken, env.ENCRYPTION_KEY);
 
             const code = 'existing-user-session';
-            await createTestSession({
+            await createTestSession(env.DB, {
                 code,
                 state: 'started',
                 userId,
@@ -875,7 +597,8 @@ describe('GET /auth/callback', () => {
 
             await makeRequest(
                 app,
-                `/auth/callback?code=discord-code&state=${code}`
+                `/auth/callback?code=discord-code&state=${code}`,
+                env
             );
 
             const session = await env.DB.prepare(`
@@ -891,7 +614,7 @@ describe('GET /auth/callback', () => {
         it('should update tokens when same user re-links same Discord account', async () => {
             const authToken = generateToken();
             const clientKey = generateToken();
-            const userId = await createTestUser(authToken);
+            const userId = await createTestUser(env.DB, authToken, env.ENCRYPTION_KEY);
             const discordId = '123456789012345678';
 
             // Create existing Discord account link
@@ -915,7 +638,7 @@ describe('GET /auth/callback', () => {
 
             // Create session for re-linking
             const code = 'relink-session';
-            await createTestSession({
+            await createTestSession(env.DB, {
                 code,
                 state: 'started',
                 userId,
@@ -941,7 +664,8 @@ describe('GET /auth/callback', () => {
 
             await makeRequest(
                 app,
-                `/auth/callback?code=discord-code&state=${code}`
+                `/auth/callback?code=discord-code&state=${code}`,
+                env
             );
 
             // Should still only have one Discord account
@@ -956,7 +680,7 @@ describe('GET /auth/callback', () => {
         it('should unlink Discord from previous user when new user links it', async () => {
             // Create first user with linked Discord
             const firstUserToken = generateToken();
-            const firstUserId = await createTestUser(firstUserToken);
+            const firstUserId = await createTestUser(env.DB, firstUserToken, env.ENCRYPTION_KEY);
             const discordId = '123456789012345678';
 
             const discordIdHash = await hashDiscordId(discordId, env.DISCORD_ID_SALT);
@@ -980,11 +704,11 @@ describe('GET /auth/callback', () => {
             // Create second user
             const secondUserToken = generateToken();
             const secondClientKey = generateToken();
-            const secondUserId = await createTestUser(secondUserToken);
+            const secondUserId = await createTestUser(env.DB, secondUserToken, env.ENCRYPTION_KEY);
 
             // Second user tries to link the same Discord account
             const code = 'cross-user-link-session';
-            await createTestSession({
+            await createTestSession(env.DB, {
                 code,
                 state: 'started',
                 userId: secondUserId,
@@ -1010,7 +734,8 @@ describe('GET /auth/callback', () => {
 
             await makeRequest(
                 app,
-                `/auth/callback?code=discord-code&state=${code}`
+                `/auth/callback?code=discord-code&state=${code}`,
+                env
             );
 
             // Should still only have one Discord account (old one deleted, new one created)
@@ -1024,7 +749,7 @@ describe('GET /auth/callback', () => {
         it('should allow same user to link multiple different Discord accounts', async () => {
             const authToken = generateToken();
             const clientKey = generateToken();
-            const userId = await createTestUser(authToken);
+            const userId = await createTestUser(env.DB, authToken, env.ENCRYPTION_KEY);
 
             // Create first Discord account link
             const firstDiscordId = '111111111111111111';
@@ -1048,7 +773,7 @@ describe('GET /auth/callback', () => {
 
             // Link second Discord account
             const code = 'second-discord-session';
-            await createTestSession({
+            await createTestSession(env.DB, {
                 code,
                 state: 'started',
                 userId,
@@ -1075,7 +800,8 @@ describe('GET /auth/callback', () => {
 
             await makeRequest(
                 app,
-                `/auth/callback?code=discord-code&state=${code}`
+                `/auth/callback?code=discord-code&state=${code}`,
+                env
             );
 
             // Should have two Discord accounts for the same user
@@ -1091,7 +817,7 @@ describe('GET /auth/callback', () => {
         it('should encrypt Discord tokens with derived key', async () => {
             const code = 'encryption-test-session';
             const clientKey = generateToken();
-            await createTestSession({
+            await createTestSession(env.DB, {
                 code,
                 state: 'started',
                 resultClientKey: clientKey,
@@ -1119,7 +845,8 @@ describe('GET /auth/callback', () => {
 
             await makeRequest(
                 app,
-                `/auth/callback?code=discord-code&state=${code}`
+                `/auth/callback?code=discord-code&state=${code}`,
+                env
             );
 
             const account = await env.DB.prepare(`

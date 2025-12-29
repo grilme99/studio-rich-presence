@@ -2928,8 +2928,8 @@ CREATE INDEX idx_auth_sessions_expires_at ON auth_sessions(expires_at);
   - [x] AES-GCM encryption/decryption for Discord tokens
 - [x] Implement rate limiting middleware
 - [x] `POST /api/auth/start` - Initiate auth flow
-- [ ] `GET /auth/link/:code` - Redirect to Discord + set state to "started"
-- [ ] `GET /auth/callback` - Handle OAuth callback + show completion code + cross-user unlinking
+- [x] `GET /auth/link/:code` - Redirect to Discord + set state to "started"
+- [x] `GET /auth/callback` - Handle OAuth callback + show completion code + cross-user unlinking
 - [ ] `GET /auth/sse/:code` - SSE endpoint via KV polling
 - [ ] `POST /api/auth/complete` - Manual code entry completion
 - [ ] `POST /api/presence/update` - Update presence with token rotation
