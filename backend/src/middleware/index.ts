@@ -3,3 +3,5 @@
  */
 
 export * from "./rateLimit";
+export * from "./auth";
+export * from "./activityTracker";

@@ -72,12 +72,10 @@ startRoute.post(
             clientKey: body.clientKey,  // Only used for existing users
         });
 
-        // Build response URLs
         const baseUrl = getBaseUrl(c);
         const authUrl = `${baseUrl}/auth/link/${session.code}`;
         const sseUrl = `${baseUrl}/auth/sse/${session.code}`;
 
-        // Return typed response (toJson converts to snake_case for JSON)
         const response = createResponse(AuthStartResponseSchema, {
             code: session.code,
             url: authUrl,

@@ -2930,14 +2930,14 @@ CREATE INDEX idx_auth_sessions_expires_at ON auth_sessions(expires_at);
 - [x] `POST /api/auth/start` - Initiate auth flow
 - [x] `GET /auth/link/:code` - Redirect to Discord + set state to "started"
 - [x] `GET /auth/callback` - Handle OAuth callback + show completion code + cross-user unlinking
-- [ ] `GET /auth/sse/:code` - SSE endpoint via KV polling
-- [ ] `POST /api/auth/complete` - Manual code entry completion
+- [X] `GET /auth/sse/:code` - SSE endpoint via KV polling
+- [X] `POST /api/auth/complete` - Manual code entry completion
 - [ ] `POST /api/presence/update` - Update presence with token rotation
 - [ ] `GET /api/accounts` - List linked accounts (fetch from Discord API)
 - [ ] `DELETE /api/accounts/:id` - Unlink account
 - [ ] `DELETE /api/user` - Delete all data
 - [ ] `POST /api/telemetry/capture` - Posthog telemetry forwarding
-- [ ] Activity tracking middleware (update `last_activity_at`)
+- [x] Activity tracking middleware (update `last_activity_at`)
 - [ ] Token rotation with acknowledgment protocol:
   - [ ] Generate pending token on presence update
   - [ ] Handle X-Ack-Token header to promote pending → active

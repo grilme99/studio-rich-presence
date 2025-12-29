@@ -80,7 +80,7 @@ describe('protobuf validation', () => {
     });
 
     describe('serializeResponse', () => {
-        it('should serialize AuthStartResponse to JSON with snake_case', () => {
+        it('should serialize AuthStartResponse to JSON', () => {
             const message = create(AuthStartResponseSchema, {
                 code: 'abc123',
                 url: 'https://example.com/auth/link/abc123',
