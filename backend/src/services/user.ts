@@ -5,11 +5,8 @@
 import { hashAuthToken, generateToken, generateUuid } from '../crypto';
 import type { DbUser } from '../env';
 
-/**
- * Result of authenticating a user by token.
- */
-export interface AuthResult {
-    success: boolean;
+export interface FindUserResult {
+    found: boolean;
     user?: DbUser;
     error?: string;
 }
@@ -19,20 +16,19 @@ export interface AuthResult {
  *
  * Uses direct hash lookup for O(1) authentication.
  * Checks both active and pending token hashes.
- * Updates last_activity_at on successful auth.
  *
  * @param db D1Database binding
  * @param token The auth token provided by the client
  * @param pepper The ENCRYPTION_KEY secret for token verification
- * @returns AuthResult with user if found
+ * @returns FindUserResult with user if found
  */
-export async function authenticateUser(
+export async function findUserByToken(
     db: D1Database,
     token: string,
     pepper: string
-): Promise<AuthResult> {
+): Promise<FindUserResult> {
     if (!token || typeof token !== 'string') {
-        return { success: false, error: 'Missing auth token' };
+        return { found: false, error: 'Missing auth token' };
     }
 
     // Compute the deterministic hash for direct lookup
@@ -44,8 +40,7 @@ export async function authenticateUser(
     `).bind(tokenHash).first<DbUser>();
 
     if (userByActiveToken) {
-        await updateLastActivity(db, userByActiveToken.id);
-        return { success: true, user: userByActiveToken };
+        return { found: true, user: userByActiveToken };
     }
 
     // Check pending token hash (for token rotation)
@@ -57,22 +52,10 @@ export async function authenticateUser(
     `).bind(tokenHash, now).first<DbUser>();
 
     if (userByPendingToken) {
-        await updateLastActivity(db, userByPendingToken.id);
-        return { success: true, user: userByPendingToken };
+        return { found: true, user: userByPendingToken };
     }
 
-    return { success: false, error: 'Invalid auth token' };
-}
-
-/**
- * Update a user's last activity timestamp.
- */
-async function updateLastActivity(db: D1Database, userId: string): Promise<void> {
-    const now = Date.now();
-    await db.prepare(`
-        UPDATE users SET last_activity_at = ?, updated_at = ?
-        WHERE id = ?
-    `).bind(now, now, userId).run();
+    return { found: false, error: 'Invalid auth token' };
 }
 
 /**
@@ -145,4 +128,3 @@ export async function deleteUser(
 
     return (result.meta.changes ?? 0) > 0;
 }
-

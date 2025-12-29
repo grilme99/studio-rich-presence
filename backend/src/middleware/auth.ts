@@ -7,7 +7,7 @@
 import { createMiddleware } from 'hono/factory';
 import type { Context } from 'hono';
 import type { Env } from '../env';
-import { hashAuthToken } from '../crypto';
+import { findUserByToken } from '../services/user';
 import { errors } from '../proto/errors';
 
 /**
@@ -43,38 +43,6 @@ async function extractToken(c: Context): Promise<string | undefined> {
 }
 
 /**
- * Look up user by token hash.
- *
- * Checks active token first, then pending token (for token rotation).
- * Returns userId if found, undefined otherwise.
- */
-async function findUserByToken(
-    db: D1Database,
-    token: string,
-    pepper: string
-): Promise<string | undefined> {
-    const tokenHash = await hashAuthToken(token, pepper);
-
-    // Check active token hash
-    const user = await db.prepare(`
-        SELECT id FROM users WHERE auth_token_hash = ?
-    `).bind(tokenHash).first<{ id: string }>();
-
-    if (user) {
-        return user.id;
-    }
-
-    // Check pending token hash (for token rotation)
-    const now = Date.now();
-    const userByPending = await db.prepare(`
-        SELECT id FROM users 
-        WHERE pending_token_hash = ? AND pending_token_expires > ?
-    `).bind(tokenHash, now).first<{ id: string }>();
-
-    return userByPending?.id;
-}
-
-/**
  * Authentication middleware that requires a valid auth token.
  *
  * Supports two authentication methods:
@@ -99,12 +67,12 @@ export const requireAuth = createMiddleware<{
         return errors.unauthorized(c, 'Missing auth token');
     }
 
-    const userId = await findUserByToken(c.env.DB, token, c.env.ENCRYPTION_KEY);
-    if (!userId) {
+    const result = await findUserByToken(c.env.DB, token, c.env.ENCRYPTION_KEY);
+    if (!result.found || !result.user) {
         return errors.unauthorized(c, 'Invalid auth token');
     }
 
-    c.set('userId', userId);
+    c.set('userId', result.user.id);
     return next();
 });
 
@@ -125,9 +93,9 @@ export const optionalAuth = createMiddleware<{
 }>(async (c, next) => {
     const token = await extractToken(c);
     if (token) {
-        const userId = await findUserByToken(c.env.DB, token, c.env.ENCRYPTION_KEY);
-        if (userId) {
-            c.set('userId', userId);
+        const result = await findUserByToken(c.env.DB, token, c.env.ENCRYPTION_KEY);
+        if (result.found && result.user) {
+            c.set('userId', result.user.id);
         }
     }
     return next();

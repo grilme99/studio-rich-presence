@@ -40,7 +40,7 @@ async function updateLastActivity(db: D1Database, userId: string): Promise<void>
  */
 export const trackActivity = createMiddleware<{
     Bindings: Env;
-    Variables: AuthVariables;
+    Variables: Partial<AuthVariables>;
 }>(async (c, next) => {
     // Process the request first
     await next();

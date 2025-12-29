@@ -6,12 +6,13 @@
 
 import { Hono } from 'hono';
 import type { Env } from '../../env';
-import { authenticateUser } from '../../services/user';
+import { findUserByToken } from '../../services/user';
 import {
     createAuthSession,
     SESSION_EXPIRATION_SECONDS,
 } from '../../services/authSession';
-import { rateLimiters } from '../../middleware/rateLimit';
+import { rateLimiters, trackActivity } from '../../middleware';
+import type { AuthVariables } from '../../middleware/auth';
 import {
     validateBody,
     getValidatedBody,
@@ -22,7 +23,7 @@ import {
 import { errors } from '../../proto/errors';
 import { getBaseUrl } from './utils';
 
-const startRoute = new Hono<{ Bindings: Env }>();
+const startRoute = new Hono<{ Bindings: Env; Variables: Partial<AuthVariables> }>();
 
 /**
  * POST /start
@@ -36,14 +37,14 @@ startRoute.post(
     '/',
     rateLimiters.auth,
     validateBody(AuthStartRequestSchema),
-    async (c) => {
-        // Generated types use camelCase (authToken, clientKey)
+    // Custom auth logic for this route:
+    // - auth_token is optional (new users don't have one)
+    // - client_key is required when auth_token is provided
+    async (c, next) => {
         const body = getValidatedBody<typeof AuthStartRequestSchema>(c);
-        let userId: string | undefined;
 
-        // If authToken provided, validate it and get user
         if (body.authToken) {
-            // clientKey is required for existing users
+            // client_key is required for existing users
             if (!body.clientKey) {
                 return errors.invalidRequest(
                     c,
@@ -52,18 +53,28 @@ startRoute.post(
                 );
             }
 
-            const authResult = await authenticateUser(
+            const result = await findUserByToken(
                 c.env.DB,
                 body.authToken,
                 c.env.ENCRYPTION_KEY
             );
 
-            if (!authResult.success || !authResult.user) {
+            if (!result.found || !result.user) {
                 return errors.unauthorized(c);
             }
 
-            userId = authResult.user.id;
+            // Set userId in context for activity tracking middleware
+            c.set('userId', result.user.id);
         }
+
+        return next();
+    },
+    // Activity tracking middleware (only runs for successful responses)
+    trackActivity,
+    // Main route handler
+    async (c) => {
+        const body = getValidatedBody<typeof AuthStartRequestSchema>(c);
+        const userId = c.get('userId');
 
         // Create auth session
         // For existing users, store their client_key so we can use it in the callback
@@ -88,4 +99,3 @@ startRoute.post(
 );
 
 export { startRoute };
-
