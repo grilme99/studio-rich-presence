@@ -2932,7 +2932,7 @@ CREATE INDEX idx_auth_sessions_expires_at ON auth_sessions(expires_at);
 - [x] `GET /auth/callback` - Handle OAuth callback + show completion code + cross-user unlinking
 - [X] `GET /auth/sse/:code` - SSE endpoint via KV polling
 - [X] `POST /api/auth/complete` - Manual code entry completion
-- [ ] `POST /api/presence/update` - Update presence with token rotation
+- [X] `POST /api/presence/update` - Update presence with token rotation
 - [ ] `GET /api/accounts` - List linked accounts (fetch from Discord API)
 - [ ] `DELETE /api/accounts/:id` - Unlink account
 - [ ] `DELETE /api/user` - Delete all data

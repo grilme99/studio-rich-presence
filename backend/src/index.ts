@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { logger } from "hono/logger";
 import type { Env } from "./env";
-import { auth, presence } from "./routes";
+import { auth, presence, accounts } from "./routes";
 
 // Create Hono app with typed environment
 const app = new Hono<{ Bindings: Env }>();
@@ -23,6 +23,7 @@ app.get("/", (c) => {
 // Register routes
 app.route("/auth", auth);
 app.route("/presence", presence);
+app.route("/accounts", accounts);
 
 // Export for Cloudflare Workers
 export default {

@@ -15,7 +15,6 @@ export interface DiscordTokenResponse {
 
 /**
  * Discord user from /users/@me endpoint.
- * We only need the ID for deduplication (not stored).
  */
 export interface DiscordUser {
     id: string;
@@ -23,6 +22,22 @@ export interface DiscordUser {
     discriminator: string;
     avatar: string | null;
     global_name: string | null;
+}
+
+/**
+ * Generate Discord avatar URL from user data.
+ *
+ * @param userId Discord user ID
+ * @param avatarHash Avatar hash from Discord API (null if no custom avatar)
+ * @returns Full avatar URL or null if using default avatar
+ */
+export function getDiscordAvatarUrl(userId: string, avatarHash: string | null): string | null {
+    if (!avatarHash) {
+        return null;
+    }
+    // Use webp format, 128px size
+    const extension = avatarHash.startsWith('a_') ? 'gif' : 'webp';
+    return `https://cdn.discordapp.com/avatars/${userId}/${avatarHash}.${extension}?size=128`;
 }
 
 /**

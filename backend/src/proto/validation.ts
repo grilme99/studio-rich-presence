@@ -49,6 +49,15 @@ export {
     PresenceAssetsSchema,
 } from '../generated/presence_pb';
 
+export {
+    type ListAccountsRequest,
+    type ListAccountsResponse,
+    type LinkedAccount,
+    ListAccountsRequestSchema,
+    ListAccountsResponseSchema,
+    LinkedAccountSchema,
+} from '../generated/accounts_pb';
+
 /**
  * Parse and validate JSON request body against a protobuf schema.
  *
