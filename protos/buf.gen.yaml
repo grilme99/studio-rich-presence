@@ -4,5 +4,8 @@ plugins:
     out: ../backend/src/generated
     opt:
       - target=ts
-managed:
-  enabled: true
+  - local: protoc-gen-luau
+    out: ../plugin/src/Protos
+    opt:
+      - roblox_imports=true
+    strategy: all

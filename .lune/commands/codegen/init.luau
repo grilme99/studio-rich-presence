@@ -5,6 +5,8 @@
 	and generates the sourcemap.
 ]]
 
+local process = require("@lune/process")
+
 local color = require("../utils/color")
 local rojo = require("../lib/project/rojo")
 
@@ -16,11 +18,20 @@ codegen.description = "Runs all code generation (sourcemap only for now)"
 codegen.usage = "lune run codegen"
 
 -- Argument definitions for CLI parsing
-codegen.arguments = {}
+codegen.arguments = {
+	{
+		name = "protos",
+		kind = "flag",
+		options = {
+			help = "Generate protobuf files",
+		},
+	},
+}
 
 export type Options = {
 	quiet: boolean?,
 	generateSourcemap: boolean?,
+	generateProtos: boolean?,
 }
 
 --[[
@@ -46,6 +57,31 @@ function codegen.run(options_: Options?): boolean
 				print(sourcemapError)
 			end
 			return false
+		end
+
+		if not quiet then
+			print(color.bold(color.dim("Sourcemap generated successfully!")))
+		end
+	end
+
+	if options.generateProtos then
+		local result = process.exec("npm", {
+			"run",
+			"proto:generate",
+		}, {
+			cwd = "backend",
+		})
+
+		if not result.ok then
+			if not quiet then
+				print(color.bold(color.red("Failed to generate protos")))
+				print(result.stderr)
+			end
+			return false
+		end
+
+		if not quiet then
+			print(color.bold(color.dim("Protos generated successfully!")))
 		end
 	end
 

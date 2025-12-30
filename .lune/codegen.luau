@@ -22,6 +22,8 @@ local function main()
 
 	command.run({
 		quiet = parser:has("quiet"),
+		generateSourcemap = true,
+		generateProtos = parser:has("protos"),
 	})
 end
 
