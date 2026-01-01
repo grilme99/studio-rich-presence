@@ -27,6 +27,7 @@ import {
     UpdatePresenceRequestSchema,
     UpdatePresenceResponseSchema,
 } from '../../generated/presence_pb';
+import { inspect } from 'util';
 
 const updateRoute = new Hono<{ Bindings: Env; Variables: AuthVariables }>();
 
@@ -100,7 +101,7 @@ updateRoute.post(
                         sessionToken: sessionResponse.token,
                     };
                 } catch (error) {
-                    console.error(`Failed to update presence for account ${account.id}:`, error);
+                    console.error(`Failed to update presence for account ${account.id}:`, inspect(error, { depth: null }));
                     return {
                         accountId: account.id,
                         success: false,

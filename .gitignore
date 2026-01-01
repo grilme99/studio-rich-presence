@@ -2,7 +2,7 @@ Packages/
 DevPackages/
 coverage/
 
-**/generated/*
+node_modules/
 
 .DS_Store
 .env.luau

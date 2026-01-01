@@ -73,46 +73,58 @@ export function presenceToActivity(
     applicationId: string
 ): DiscordActivity {
     const activity: DiscordActivity = {
-        name: 'Roblox Studio',
-        type: ActivityType.PLAYING,
         application_id: applicationId,
         platform: 'desktop',
+
+        // id: 'custom_status',
+        name: 'Roblox Studio 1',
+
+        type: ActivityType.PLAYING,
+        details: 'Roblox Studio 2',
+        state: 'Roblox Studio 3',
+
+        assets: {
+            large_image: 'studio-logo',
+            large_text: 'Editing in Roblox Studio',
+            // large_url: 'https://srp.brooke.sh',
+            small_image: 'studio-logo',
+        },
     };
 
-    if (presence?.details) {
-        activity.details = presence.details;
-    }
+    // if (presence?.details) {
+    //     activity.details = presence.details;
+    // }
 
-    if (presence?.state) {
-        activity.state = presence.state;
-    }
+    // if (presence?.state) {
+    //     activity.state = presence.state;
+    // }
 
-    if (presence?.timestamps) {
-        activity.timestamps = {};
-        // Proto uses seconds, Discord uses milliseconds
-        if (presence.timestamps.startUnix !== undefined) {
-            activity.timestamps.start = Number(presence.timestamps.startUnix) * 1000;
-        }
-        if (presence.timestamps.endUnix !== undefined) {
-            activity.timestamps.end = Number(presence.timestamps.endUnix) * 1000;
-        }
-    }
+    // if (presence?.timestamps) {
+    //     activity.timestamps = {};
+    //     // Proto uses seconds, Discord uses milliseconds
+    //     if (presence.timestamps.startUnix !== undefined) {
+    //         activity.timestamps.start = Number(presence.timestamps.startUnix) * 1000;
+    //     }
+    //     if (presence.timestamps.endUnix !== undefined) {
+    //         activity.timestamps.end = Number(presence.timestamps.endUnix) * 1000;
+    //     }
+    // }
 
-    if (presence?.assets) {
-        activity.assets = {};
-        if (presence.assets.largeImage) {
-            activity.assets.large_image = presence.assets.largeImage;
-        }
-        if (presence.assets.largeText) {
-            activity.assets.large_text = presence.assets.largeText;
-        }
-        if (presence.assets.smallImage) {
-            activity.assets.small_image = presence.assets.smallImage;
-        }
-        if (presence.assets.smallText) {
-            activity.assets.small_text = presence.assets.smallText;
-        }
-    }
+    // if (presence?.assets) {
+    //     activity.assets = {};
+    //     if (presence.assets.largeImage) {
+    //         activity.assets.large_image = presence.assets.largeImage;
+    //     }
+    //     if (presence.assets.largeText) {
+    //         activity.assets.large_text = presence.assets.largeText;
+    //     }
+    //     if (presence.assets.smallImage) {
+    //         activity.assets.small_image = presence.assets.smallImage;
+    //     }
+    //     if (presence.assets.smallText) {
+    //         activity.assets.small_text = presence.assets.smallText;
+    //     }
+    // }
 
     return activity;
 }
