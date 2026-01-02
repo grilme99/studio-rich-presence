@@ -5,7 +5,7 @@ plugins:
     opt:
       - target=ts
   - local: protoc-gen-luau
-    out: ../plugin/src/Protos
+    out: ../plugin/src/Api/Protos
     opt:
       - roblox_imports=true
     strategy: all
