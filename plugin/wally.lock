@@ -5,7 +5,7 @@ registry = "test"
 [[package]]
 name = "brhodes/studio-rich-presence"
 version = "0.1.0"
-dependencies = [["Chalk", "jsdotlua/chalk@0.2.1"], ["Jest", "jsdotlua/jest@3.10.0"], ["JestGlobals", "jsdotlua/jest-globals@3.10.0"], ["Log", "realthx1/luaulog@0.3.0"], ["React", "jsdotlua/react@17.2.1"], ["ReactRoblox", "jsdotlua/react-roblox@17.2.1"], ["Sift", "csqrl/sift@0.0.8"], ["sha256", "dekkonot/sha256@1.0.1"], ["t", "osyrisrblx/t@3.1.1"]]
+dependencies = [["Chalk", "jsdotlua/chalk@0.2.1"], ["Jest", "jsdotlua/jest@3.10.0"], ["JestGlobals", "jsdotlua/jest-globals@3.10.0"], ["Log", "realthx1/luaulog@0.3.0"], ["React", "jsdotlua/react@17.2.1"], ["ReactRoblox", "jsdotlua/react-roblox@17.2.1"], ["Sift", "csqrl/sift@0.0.8"], ["Storyteller", "flipbook-labs/storyteller@1.5.0"], ["sha256", "dekkonot/sha256@1.0.1"], ["t", "osyrisrblx/t@3.1.1"]]
 
 [[package]]
 name = "csqrl/sift"
@@ -16,6 +16,41 @@ dependencies = []
 name = "dekkonot/sha256"
 version = "1.0.1"
 dependencies = []
+
+[[package]]
+name = "elttob/fusion"
+version = "0.2.0"
+dependencies = []
+
+[[package]]
+name = "elttob/fusion"
+version = "0.3.0"
+dependencies = []
+
+[[package]]
+name = "evaera/promise"
+version = "4.0.0"
+dependencies = []
+
+[[package]]
+name = "flipbook-labs/module-loader"
+version = "0.7.0"
+dependencies = [["Janitor", "howmanysmall/janitor@1.18.3"], ["Jest", "jsdotlua/jest@3.10.0"], ["JestGlobals", "jsdotlua/jest-globals@3.10.0"], ["LuauPolyfill", "jsdotlua/luau-polyfill@1.2.7"], ["Sift", "csqrl/sift@0.0.8"]]
+
+[[package]]
+name = "flipbook-labs/storyteller"
+version = "1.5.0"
+dependencies = [["Fusion", "elttob/fusion@0.2.0"], ["Fusion3", "elttob/fusion@0.3.0"], ["Jest", "jsdotlua/jest@3.10.0"], ["JestGlobals", "jsdotlua/jest-globals@3.10.0"], ["ModuleLoader", "flipbook-labs/module-loader@0.7.0"], ["React", "jsdotlua/react@17.2.1"], ["ReactRoblox", "jsdotlua/react-roblox@17.2.1"], ["Roact", "roblox/roact@1.4.4"], ["RoactCompat", "jsdotlua/roact-compat@17.2.1"], ["Sift", "csqrl/sift@0.0.8"], ["t", "osyrisrblx/t@3.1.1"]]
+
+[[package]]
+name = "howmanysmall/janitor"
+version = "1.18.3"
+dependencies = [["Promise", "howmanysmall/typed-promise@4.0.6"]]
+
+[[package]]
+name = "howmanysmall/typed-promise"
+version = "4.0.6"
+dependencies = [["Promise", "evaera/promise@4.0.0"]]
 
 [[package]]
 name = "jsdotlua/boolean"
@@ -248,6 +283,11 @@ version = "17.2.1"
 dependencies = [["luau-polyfill", "jsdotlua/luau-polyfill@1.2.7"], ["react", "jsdotlua/react@17.2.1"], ["react-reconciler", "jsdotlua/react-reconciler@17.2.1"], ["scheduler", "jsdotlua/scheduler@17.2.1"], ["shared", "jsdotlua/shared@17.2.1"]]
 
 [[package]]
+name = "jsdotlua/roact-compat"
+version = "17.2.1"
+dependencies = [["luau-polyfill", "jsdotlua/luau-polyfill@1.2.7"], ["react", "jsdotlua/react@17.2.1"], ["react-roblox", "jsdotlua/react-roblox@17.2.1"], ["shared", "jsdotlua/shared@17.2.1"]]
+
+[[package]]
 name = "jsdotlua/scheduler"
 version = "17.2.1"
 dependencies = [["luau-polyfill", "jsdotlua/luau-polyfill@1.2.7"], ["shared", "jsdotlua/shared@17.2.1"]]
@@ -285,4 +325,9 @@ dependencies = []
 [[package]]
 name = "realthx1/luaulog"
 version = "0.3.0"
+dependencies = []
+
+[[package]]
+name = "roblox/roact"
+version = "1.4.4"
 dependencies = []

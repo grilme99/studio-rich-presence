@@ -33,6 +33,7 @@ install.arguments = {
 
 local PROJECT_FILE = "plugin/default.project.jsonc"
 local SOURCEMAP_PATH = "sourcemap.json"
+local VERSION_PIN = "0.702.0.7020622"
 local PACKAGE_DIRS = {
 	"Packages",
 	-- "DevPackages",
@@ -123,6 +124,8 @@ function install.run(options_: Options?): boolean
 	exec.run("roblox-packages", {
 		"install",
 		robloxPackagesPath,
+		"--version",
+		VERSION_PIN,
 	})
 
 	if not quiet then
